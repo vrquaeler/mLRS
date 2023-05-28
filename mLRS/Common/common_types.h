@@ -10,6 +10,7 @@
 #define COMMON_TYPES_H
 #pragma once
 
+// #define NO_SERVO_RESCALE                 //  uncomment to switch off servo rescaling
 
 #include <inttypes.h>
 

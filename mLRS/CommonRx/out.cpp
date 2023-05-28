@@ -128,6 +128,12 @@ void OutBase::SendRcData(tRcData* rc_orig, bool frame_lost, bool failsafe, int8_
         }
     }
 
+#ifdef NO_SERVO_RESCALE
+    for (uint8_t n = 0; n < RC_DATA_LEN; n++) {
+        uint32_t xs = rc.ch[n];
+        rc.ch[n] = xs;
+    }
+#else
     // mimic spektrum
     // 1090 ... 1515  ... 1940
     // => x' = (1090-1000) * 2048/1000 + 850/1000 * x
@@ -136,6 +142,7 @@ void OutBase::SendRcData(tRcData* rc_orig, bool frame_lost, bool failsafe, int8_
         uint32_t xs = 850 * rc.ch[n];
         rc.ch[n] = (xs + t) / 1000;
     }
+#endif
 
     if (failsafe) {
         switch (failsafe_mode) {
