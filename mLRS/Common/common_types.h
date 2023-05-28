@@ -10,10 +10,10 @@
 #define COMMON_TYPES_H
 #pragma once
 
-// #define NO_SERVO_RESCALE                 //  uncomment to switch off servo rescaling
 
 #include <inttypes.h>
 
+#define NO_SERVO_RESCALE                 //  uncomment to switch off SPECTRUMRC servo scaling
 
 #define ARRAY_LEN(x)  sizeof(x)/sizeof(x[0])
 

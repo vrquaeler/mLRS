@@ -104,7 +104,28 @@ uint16_t rc_from_crsf(uint16_t crsf_ch)
     return clip_rc( (((int32_t)(crsf_ch) - 992) * 2047) / 1966 + 1024 );
 }
 
+#ifdef NO_SERVO_RESCALE
+uint16_t rc_to_sbus(uint16_t rc_ch)
+{
+    return (((int32_t)(rc_ch) - 1024) * 1966) / 2047 + 1000;
+}
 
+uint16_t rc_to_crsf(uint16_t rc_ch)
+{
+    return (((int32_t)(rc_ch) - 1024) * 1966) / 2047 + 1000;
+}
+
+uint16_t rc_to_mavlink(uint16_t rc_ch)
+{
+    return (((int32_t)(rc_ch) - 1024) * 1200) / 2047 + 1500; // 1228 = 1966 * 5/8
+}
+
+int16_t rc_to_mavlink_13bcentered(uint16_t rc_ch)
+{
+    return (((int32_t)(rc_ch) - 1024) * 15) / 4; // let's mimic rc_to_mavlink()
+}
+
+#else
 uint16_t rc_to_sbus(uint16_t rc_ch)
 {
     return (((int32_t)(rc_ch) - 1024) * 1920) / 2047 + 1000;
@@ -128,6 +149,7 @@ int16_t rc_to_mavlink_13bcentered(uint16_t rc_ch)
 //    return ((int32_t)(rc_ch) - 1024) * 4;
     return (((int32_t)(rc_ch) - 1024) * 15) / 4; // let's mimic rc_to_mavlink()
 }
+#endif
 
 
 //-- crsf
