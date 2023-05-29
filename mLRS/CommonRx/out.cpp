@@ -129,9 +129,14 @@ void OutBase::SendRcData(tRcData* rc_orig, bool frame_lost, bool failsafe, int8_
     }
 
 #ifdef NO_SERVO_RESCALE
+    uint32_t t = 100*2048;
     for (uint8_t n = 0; n < RC_DATA_LEN; n++) {
-        uint32_t xs = rc.ch[n];
-        rc.ch[n] = xs;
+        uint32_t xs = 800 * rc.ch[n];
+        if (n < 12) {
+        	rc.ch[n] = xs / 800;
+        } else {
+        	rc.ch[n] = (xs + t) / 1000;
+        }
     }
 #else
     // mimic spektrum
