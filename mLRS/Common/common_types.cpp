@@ -117,12 +117,12 @@ uint16_t rc_to_crsf(uint16_t rc_ch)
 
 uint16_t rc_to_mavlink(uint16_t rc_ch)
 {
-    return (((int32_t)(rc_ch) - 1024) * 1227) / 2047 + 1500; // 1228 = 1966 * 5/8
+    return (((int32_t)(rc_ch) - 1024) * 1228) / 2047 + 1500; // 1228 = 1966 * 5/8
 }
 
 int16_t rc_to_mavlink_13bcentered(uint16_t rc_ch)
 {
-    return (((int32_t)(rc_ch) - 1024) * 15) / 4; // let's mimic rc_to_mavlink()
+    return (((int32_t)(rc_ch) - 1024) * 96) / 25; // let's mimic rc_to_mavlink()
 }
 
 #else
