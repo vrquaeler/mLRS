@@ -431,7 +431,7 @@ tCmdFrameHeader* head = (tCmdFrameHeader*)(frame->payload);
         // received rx setup data
         unpack_rxcmdframe_rxsetupdata(frame);
         link_task_reset();
-#ifdef USE_JRPIN5
+#ifdef DEVICE_HAS_JRPIN5
         switch (mbridge.cmd_in_process) {
         case MBRIDGE_CMD_REQUEST_INFO: mbridge.HandleCmd(MBRIDGE_CMD_REQUEST_INFO); break;
         }
@@ -750,9 +750,9 @@ RESTARTCONTROLLER
     mavlink.Init(&serial, &mbridge, &serial2); // ports selected by SerialDestination, ChannelsSource
     msp.Init(&serial, &serial2); // ports selected by SerialDestination
     sx_serial.Init(&serial, &mbridge, &serial2); // ports selected by SerialDestination, ChannelsSource
-    cli.Init(&comport);
+    cli.Init(&comport, Config.frame_rate_ms);
 #ifdef USE_ESP_WIFI_BRIDGE
-  #ifdef DEVICE_HAS_ESP_WIFI_BRIDGE_ON_JRPIN5
+  #ifdef DEVICE_HAS_ESP_WIFI_BRIDGE_W_PASSTHRU_VIA_JRPIN5
     esp.Init(&jrpin5serial, &serial, &serial2, Config.SerialBaudrate, &Setup.Tx[Config.ConfigId]);
   #else
     esp.Init(&comport, &serial, &serial2, Config.SerialBaudrate, &Setup.Tx[Config.ConfigId]);
