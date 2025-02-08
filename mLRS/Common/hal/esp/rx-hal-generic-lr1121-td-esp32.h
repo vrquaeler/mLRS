@@ -150,18 +150,11 @@ void sx2_dio_exti_isr_clearflag(void) {}
 
 //-- Button
 
-#define BUTTON                    IO_P0
+#define BUTTON                    -1
 
-void button_init(void)
-{
-    gpio_init(BUTTON, IO_MODE_INPUT_PU);
-}
+void button_init(void) {}
 
-IRAM_ATTR bool button_pressed(void)
-{
-    return gpio_read_activelow(BUTTON) ? true : false;
-}
-
+IRAM_ATTR bool button_pressed(void) { return false; }
 
 //-- LEDs
 #include <NeoPixelBus.h>
