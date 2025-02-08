@@ -185,9 +185,9 @@ void SX_DIO_EXTI_IRQHandler(void)
             sx.ReadBuffer(0, (uint8_t*)&bind_signature, 8);
             if (bind_signature != bind.TxSignature) irq_status = 0; // not binding frame, so ignore it
         } else {
-            uint16_t sync_word;
-            sx.ReadBuffer(0, (uint8_t*)&sync_word, 2); // rxStartBufferPointer is always 0, so no need for sx.GetRxBufferStatus()
-            if (sync_word != Config.FrameSyncWord) irq_status = 0; // not for us, so ignore it
+            //uint16_t sync_word;
+            //sx.ReadBuffer(0, (uint8_t*)&sync_word, 2); // rxStartBufferPointer is always 0, so no need for sx.GetRxBufferStatus()
+            //if (sync_word != Config.FrameSyncWord) irq_status = 0; // not for us, so ignore it
         }
     }
 })
@@ -203,9 +203,9 @@ void SX2_DIO_EXTI_IRQHandler(void)
             sx2.ReadBuffer(0, (uint8_t*)&bind_signature, 8);
             if (bind_signature != bind.TxSignature) irq2_status = 0;
         } else {
-            uint16_t sync_word;
-            sx2.ReadBuffer(0, (uint8_t*)&sync_word, 2);
-            if (sync_word != Config.FrameSyncWord) irq2_status = 0;
+            //uint16_t sync_word;
+            //sx2.ReadBuffer(0, (uint8_t*)&sync_word, 2);
+            //if (sync_word != Config.FrameSyncWord) irq2_status = 0;
         }
     }
 })
@@ -484,7 +484,8 @@ dbg.puts("fail a");dbg.putc(antenna+'0');dbg.puts(" ");dbg.puts(u8toHEX_s(res));
 
     // must not happen !
     // it can happen though, I've observed it on R9, maybe if in the ca 1 ms after receive the sx starts receiving something?
-    if (res == CHECK_ERROR_SYNCWORD) { FAIL_WMSG("do_receive() CHECK_ERROR_SYNCWORD"); return RX_STATUS_INVALID; }
+    // if (res == CHECK_ERROR_SYNCWORD) { FAIL_WMSG("do_receive() CHECK_ERROR_SYNCWORD"); return RX_STATUS_INVALID; }
+    if (res == CHECK_ERROR_SYNCWORD) return RX_STATUS_INVALID; // must not happen !
 
     if (res == CHECK_OK || res == CHECK_ERROR_CRC) {
 
