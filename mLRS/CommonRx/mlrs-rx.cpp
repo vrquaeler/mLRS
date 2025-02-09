@@ -519,6 +519,8 @@ uint8_t doPostReceive2_cnt;
 bool doPostReceive2;
 bool frame_missed;
 
+uint32_t loopCounter = 0;
+
 
 bool connected(void)
 {
@@ -585,6 +587,8 @@ RESTARTCONTROLLER
     resetSysTask(); // helps in avoiding too short first loop
 INITCONTROLLER_END
 
+    loopCounter++;
+
     //-- SysTask handling
 
     if (doSysTask()) {
@@ -605,6 +609,8 @@ INITCONTROLLER_END
 
         if (!tick_1hz) {
             dbg.puts(".");
+            Serial1.println(loopCounter);
+            loopCounter = 0;
 /*            dbg.puts("\nRX: ");
             dbg.puts(u8toBCD_s(stats.GetLQ_rc())); dbg.putc(',');
             dbg.puts(u8toBCD_s(stats.GetLQ_serial()));

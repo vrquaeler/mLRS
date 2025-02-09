@@ -131,6 +131,10 @@
 #include "tx-hal-radiomaster-nomad-900-esp32.h"
 #endif
 
+#ifdef RX_ELRS_RADIOMASTER_NOMAD_900_ESP32
+#include "rx-hal-radiomaster-nomad-900-esp32.h"
+#endif
+
 
 // -- DIY
 

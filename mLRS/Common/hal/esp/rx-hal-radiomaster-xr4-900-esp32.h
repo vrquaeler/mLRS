@@ -21,9 +21,9 @@
 // UART = output port, SBus or whatever
 // UARTF = debug port
 
-#define UART_USE_SERIAL1 
+#define UART_USE_SERIAL2 
 #define UART_BAUD                 416666   // CRSF baud rate
-#define UART_USE_TX_IO            IO_P18   // tx2 pad on the receiver
+#define UART_USE_TX_IO            IO_P5   // tx2 pad on the receiver
 #define UART_USE_RX_IO            -1       // no Rx pin needed
 #define UART_TXBUFSIZE            256
 
