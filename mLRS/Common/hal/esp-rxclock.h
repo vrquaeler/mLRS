@@ -36,6 +36,10 @@ volatile uint32_t MS_C = CLOCK_CNT_1MS;
 IRQHANDLER(
 void CLOCK_IRQHandler(void)
 {
+#ifdef ESP32
+    taskENTER_CRITICAL_ISR(&esp32_spinlock);
+#endif
+
     CNT_10us++;
 
     // call HAL_IncTick every 1 ms
@@ -54,6 +58,10 @@ void CLOCK_IRQHandler(void)
     if (CNT_10us == CCR3) {
         doPostReceive = true;
     }
+
+#ifdef ESP32
+    taskEXIT_CRITICAL_ISR(&esp32_spinlock);
+#endif
 
 })
 
