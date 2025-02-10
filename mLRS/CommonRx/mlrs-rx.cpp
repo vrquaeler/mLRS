@@ -519,8 +519,6 @@ uint8_t doPostReceive2_cnt;
 bool doPostReceive2;
 bool frame_missed;
 
-uint32_t loopCounter = 0;
-
 
 bool connected(void)
 {
