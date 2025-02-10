@@ -12,7 +12,7 @@
 
 #define DEVICE_HAS_SINGLE_LED_RGB
 #define DEVICE_HAS_DIVERSITY_SINGLE_SPI // must be set, doesn't work without it
-#define DEVICE_HAS_NO_DEBUG
+//#define DEVICE_HAS_NO_DEBUG
 //#define DEVICE_HAS_SERIAL_OR_DEBUG
 
 
@@ -26,7 +26,9 @@
 #define UARTB_TXBUFSIZE           RX_SERIAL_TXBUFSIZE
 #define UARTB_RXBUFSIZE           RX_SERIAL_RXBUFSIZE
 
-#define UARTF_USE_SERIAL
+#define UARTF_USE_SERIAL1
+#define UARTF_USE_TX_IO           IO_P18   // tx2 pad on the receiver
+#define UARTF_USE_RX_IO            -1       // no Rx pin needed
 #define UARTF_BAUD                115200
 
 
@@ -127,11 +129,18 @@ void sx2_dio_exti_isr_clearflag(void) {}
 
 //-- Button
 
-#define BUTTON                    -1
+#define BUTTON                    IO_P0
 
-void button_init(void) {}
+void button_init(void)
+{
+    gpio_init(BUTTON, IO_MODE_INPUT_PU);
+}
 
-IRAM_ATTR bool button_pressed(void) { return false; }
+IRAM_ATTR bool button_pressed(void)
+{
+    return gpio_read_activelow(BUTTON) ? true : false;
+}
+
 
 //-- LEDs
 #include <NeoPixelBus.h>

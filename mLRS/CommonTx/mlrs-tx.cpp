@@ -318,9 +318,9 @@ void SX_DIO_EXTI_IRQHandler(void)
             sx.ReadBuffer(0, (uint8_t*)&bind_signature, 8);
             if (bind_signature != bind.RxSignature) irq_status = 0; // not binding frame, so ignore it
         } else {
-            //uint16_t sync_word;
-            //sx.ReadBuffer(0, (uint8_t*)&sync_word, 2); // rxStartBufferPointer is always 0, so no need for sx.GetRxBufferStatus()
-            //if (sync_word != Config.FrameSyncWord) irq_status = 0; // not for us, so ignore it
+            uint16_t sync_word;
+            sx.ReadBuffer(0, (uint8_t*)&sync_word, 2); // rxStartBufferPointer is always 0, so no need for sx.GetRxBufferStatus()
+            if (sync_word != Config.FrameSyncWord) irq_status = 0; // not for us, so ignore it
         }
     }
 })
@@ -336,9 +336,9 @@ void SX2_DIO_EXTI_IRQHandler(void)
             sx2.ReadBuffer(0, (uint8_t*)&bind_signature, 8);
             if (bind_signature != bind.RxSignature) irq2_status = 0;
         } else {
-            //uint16_t sync_word;
-            //sx2.ReadBuffer(0, (uint8_t*)&sync_word, 2);
-            //if (sync_word != Config.FrameSyncWord) irq2_status = 0;
+            uint16_t sync_word;
+            sx2.ReadBuffer(0, (uint8_t*)&sync_word, 2);
+            if (sync_word != Config.FrameSyncWord) irq2_status = 0;
         }
     }
 })
@@ -684,8 +684,6 @@ uint16_t connect_tmo_cnt;
 uint8_t connect_sync_cnt;
 bool connect_occured_once;
 
-uint8_t ant;
-
 
 bool connected(void)
 {
@@ -841,21 +839,20 @@ INITCONTROLLER_END
         break;
 
     case LINK_STATE_TRANSMIT:
-        ant = tdiversity.Antenna();
-        do_transmit_prepare(ant);
-        rfpower.Update();
-        fhss.HopToNext();
-        sx.SetRfFrequency(fhss.GetCurrFreq());
-        sx2.SetRfFrequency(fhss.GetCurrFreq2());
+        do_transmit_prepare(tdiversity.Antenna());
         link_state = LINK_STATE_TRANSMIT_SEND;
         DBG_MAIN_SLIM(dbg.puts("\nt");)
         break;
 
     case LINK_STATE_TRANSMIT_SEND: {
         uint16_t dt = micros16() - pretransmit_tstamp_us;
-        if (dt < 500) break;
+        if (dt < 750) break;
         isInTimeGuard = false;
-        do_transmit_send(ant);
+        rfpower.Update();
+        fhss.HopToNext();
+        sx.SetRfFrequency(fhss.GetCurrFreq());
+        sx2.SetRfFrequency(fhss.GetCurrFreq2());
+        do_transmit_send(tdiversity.Antenna());
         link_state = LINK_STATE_TRANSMIT_WAIT;
         irq_status = irq2_status = 0;
         DBG_MAIN_SLIM(dbg.puts(">");)
