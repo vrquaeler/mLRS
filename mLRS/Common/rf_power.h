@@ -30,7 +30,7 @@ class tRfPower
 
 void tRfPower::Init(void)
 {
-    rfpower_current_idx = 0;
+    rfpower_current_idx = -1;  // prevents getting stuck with Setup.Rx.Power at boot
     rfpower_new_idx = rfpower_current_idx; // to prevent update before first Set
 }
 
