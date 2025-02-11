@@ -65,7 +65,7 @@ void CLOCK10US_IRQHandler(void)
 
     // this is 1 ms after RX was or was supposed to be received
     if (CNT_10us == CCR3) {
-        doPostReceive = true;
+        doPostReceiveESP32 = true;
     }
 
     taskEXIT_CRITICAL_ISR(&esp32_spinlock);
