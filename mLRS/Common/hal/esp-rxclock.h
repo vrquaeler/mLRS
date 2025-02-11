@@ -45,11 +45,8 @@ volatile uint32_t MS_C = CLOCK_CNT_1MS;
 
 #ifdef ESP32
 IRQHANDLER(
-void CLOCK1MS_IRQHandler(void)
-{
-    HAL_IncTick();
-})
-    
+void CLOCK1MS_IRQHandler(void) {HAL_IncTick();} )
+
 IRQHANDLER(
 void CLOCK10US_IRQHandler(void)
 {
