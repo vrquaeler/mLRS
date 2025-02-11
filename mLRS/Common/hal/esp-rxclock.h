@@ -29,6 +29,7 @@
 
 
 volatile bool doPostReceive = false;
+volatile bool doPostReceiveESP32 = false;
 
 uint16_t CLOCK_PERIOD_10US; // does not change while isr is enabled, so no need for volatile
 
