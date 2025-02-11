@@ -44,16 +44,11 @@ volatile uint32_t MS_C = CLOCK_CNT_1MS;
 //-------------------------------------------------------
 
 #ifdef ESP32
-//IRQHANDLER(
-//void CLOCK1MS_IRQHandler(void)
-//{
-//    HAL_IncTick();
-//})
-
-extern "C" void __attribute__((weak)) vApplicationTickHook(void) 
-{    
+IRQHANDLER(
+void CLOCK1MS_IRQHandler(void)
+{
     HAL_IncTick();
-}
+})
     
 IRQHANDLER(
 void CLOCK10US_IRQHandler(void)
@@ -132,11 +127,11 @@ void tRxClock::Init(uint16_t period_ms)
     // initialize the timer(s)
 #ifdef ESP32
     // initialize the 1 ms uwTick timer
-    //hw_timer_t* timer0_cfg = nullptr;
-    //timer0_cfg = timerBegin(0, 800, 1);  // Timer 0, APB clock is 80 Mhz | divide by 800 is 100 KHz / 10 us, count up
-    //timerAttachInterrupt(timer0_cfg, &CLOCK1MS_IRQHandler, true);
-    //timerAlarmWrite(timer0_cfg, 100, true); // 10 us * 100 = 1 ms
-    //timerAlarmEnable(timer0_cfg);
+    hw_timer_t* timer0_cfg = nullptr;
+    timer0_cfg = timerBegin(0, 800, 1);  // Timer 0, APB clock is 80 Mhz | divide by 800 is 100 KHz / 10 us, count up
+    timerAttachInterrupt(timer0_cfg, &CLOCK1MS_IRQHandler, true);
+    timerAlarmWrite(timer0_cfg, 100, true); // 10 us * 100 = 1 ms
+    timerAlarmEnable(timer0_cfg);
 
     // initialize the 10 us doPostReceive timer, put it on Core 0
     xTaskCreatePinnedToCore([](void *parameter) {
