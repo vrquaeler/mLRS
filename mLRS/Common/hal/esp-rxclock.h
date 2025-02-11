@@ -29,7 +29,6 @@
 
 
 volatile bool doPostReceive = false;
-volatile bool doPostReceiveESP32 = false;
 
 uint16_t CLOCK_PERIOD_10US; // does not change while isr is enabled, so no need for volatile
 
@@ -65,7 +64,7 @@ void CLOCK10US_IRQHandler(void)
 
     // this is 1 ms after RX was or was supposed to be received
     if (CNT_10us == CCR3) {
-        doPostReceiveESP32 = true;
+        doPostReceive = true;
     }
 
     taskEXIT_CRITICAL_ISR(&esp32_spinlock);
