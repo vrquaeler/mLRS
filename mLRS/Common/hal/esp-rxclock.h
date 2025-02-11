@@ -104,6 +104,7 @@ class tRxClock
     void Init(uint16_t period_ms);
     void SetPeriod(uint16_t period_ms);
     void Reset(void);
+    bool CheckDoPostReceive(void);
 
   private:
     bool initialized = false;
@@ -176,6 +177,23 @@ IRAM_ATTR void tRxClock::Reset(void)
 #elif defined ESP8266
     MS_C = CNT_10us + CLOCK_CNT_1MS;  // MS_C only used on ESP8266
     interrupts();
+#endif
+}
+
+
+IRAM_ATTR bool tRxClock::CheckDoPostReceive(void)
+{
+#ifdef ESP32
+    taskENTER_CRITICAL(&esp32_spinlock);
+    if (doPostReceiveESP32) { 
+        doPostReceiveESP32 = false;
+        taskEXIT_CRITICAL(&esp32_spinlock);
+        return true;
+    } 
+    taskEXIT_CRITICAL(&esp32_spinlock);
+    return false;
+#elif defined ESP8266
+    return doPostReceive;
 #endif
 }
 
