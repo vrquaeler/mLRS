@@ -193,7 +193,7 @@ IRAM_ATTR bool tRxClock::CheckDoPostReceive(void)
     taskEXIT_CRITICAL(&esp32_spinlock);
     return false;
 #elif defined ESP8266
-    return doPostReceive;
+    return doPostReceive;  // same for STM32
 #endif
 }
 
