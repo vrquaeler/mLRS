@@ -66,13 +66,6 @@
 #define UARTE_RXBUFSIZE            0  // RX FIFO = 128 + 1
 
 
-//-- In port
-
-void in_init_gpio(void) {}
-void in_set_normal(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, false); }
-void in_set_inverted(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, true); }
-
-
 //-- SX1: LR11xx & SPI
 
 #define SPI_CS_IO                 IO_P27
@@ -144,6 +137,15 @@ void sx2_dio_init_exti_isroff(void) { detachInterrupt(SX2_DIO1); }
 void sx2_dio_enable_exti_isr(void) { attachInterrupt(SX2_DIO1, SX2_DIO_EXTI_IRQHandler, RISING); }
 
 void sx2_dio_exti_isr_clearflag(void) {}
+
+
+//-- In port
+
+void in_init_gpio(void) {}
+
+void in_set_normal(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, false); }
+
+void in_set_inverted(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, true); }
 
 
 //-- Button
