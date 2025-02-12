@@ -44,8 +44,7 @@ volatile uint32_t MS_C = CLOCK_CNT_1MS;
 //-------------------------------------------------------
 
 #ifdef ESP32
-IRQHANDLER(
-void CLOCK1MS_IRQHandler(void) {HAL_IncTick();} )
+IRQHANDLER( void CLOCK1MS_IRQHandler(void) {HAL_IncTick();} )
 
 IRQHANDLER(
 void CLOCK10US_IRQHandler(void)
@@ -62,7 +61,8 @@ void CLOCK10US_IRQHandler(void)
 
     // this is 1 ms after RX was or was supposed to be received
     if (CNT_10us == CCR3) {
-        doPostReceiveESP32 = true;
+        //doPostReceiveESP32 = true;
+        doPostReceive = true;
     }
 
     taskEXIT_CRITICAL_ISR(&esp32_spinlock);

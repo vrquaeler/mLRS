@@ -724,7 +724,7 @@ IF_SX2(
 );
 
     // this happens ca 1 ms after a frame was or should have been received
-    if (rxclock.CheckDoPostReceive()) {
+    if (doPostReceive) {
         doPostReceive = false;
 
         bool frame_received, valid_frame_received, invalid_frame_received;
