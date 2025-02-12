@@ -190,6 +190,11 @@ void uart_init_isroff(void)
 }
 
 
+void uart_rx_enableisr(bool)
+{
+    // not supported on ESP
+}
+
 void uart_init(void)
 {
     uart_init_isroff();

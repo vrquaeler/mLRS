@@ -190,6 +190,11 @@ void uartd_init_isroff(void)
 }
 
 
+void uartd_rx_enableisr(bool)
+{
+    // not supported on ESP
+}
+
 void uartd_init(void)
 {
     uartd_init_isroff();

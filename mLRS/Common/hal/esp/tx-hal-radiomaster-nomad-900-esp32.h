@@ -13,6 +13,7 @@
 // https://github.com/ExpressLRS/targets/blob/master/TX/Radiomaster%20Nomad.json
 
 #define DEVICE_HAS_JRPIN5
+#define DEVICE_HAS_IN
 #define DEVICE_HAS_NO_DEBUG
 #define DEVICE_HAS_DIVERSITY_SINGLE_SPI
 #define DEVICE_HAS_SINGLE_LED_RGB
@@ -57,6 +58,21 @@
 #define UARTD_USE_RX_IO           IO_P18
 #define UARTD_TXBUFSIZE           TX_SERIAL_TXBUFSIZE
 #define UARTD_RXBUFSIZE           TX_SERIAL_RXBUFSIZE
+
+#define UARTE_USE_SERIAL1 // JR bay pin5
+#define UARTE_BAUD                 100000
+#define UARTE_USE_TX_IO            -1
+#define UARTE_USE_RX_IO            IO_P4
+#define UARTE_RXBUFSIZE            0  // RX FIFO = 128 + 1
+
+
+//-- In port
+
+void in_init_gpio(void) {}
+
+void in_set_normal(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, false); }
+
+void in_set_inverted(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, true); }
 
 
 //-- SX1: LR11xx & SPI
