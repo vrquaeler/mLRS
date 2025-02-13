@@ -28,8 +28,7 @@
 #endif
 
 
-volatile bool doPostReceive = false;
-volatile bool doPostReceiveESP32 = false;
+volatile bool doPostReceive;
 
 uint16_t CLOCK_PERIOD_10US; // does not change while isr is enabled, so no need for volatile
 
@@ -44,8 +43,12 @@ volatile uint32_t MS_C = CLOCK_CNT_1MS;
 //-------------------------------------------------------
 
 #ifdef ESP32
-IRQHANDLER( void CLOCK1MS_IRQHandler(void) {HAL_IncTick();} )
-
+IRQHANDLER(
+void CLOCK1MS_IRQHandler(void)
+{
+    HAL_IncTick();
+})
+    
 IRQHANDLER(
 void CLOCK10US_IRQHandler(void)
 {
@@ -61,7 +64,6 @@ void CLOCK10US_IRQHandler(void)
 
     // this is 1 ms after RX was or was supposed to be received
     if (CNT_10us == CCR3) {
-        //doPostReceiveESP32 = true;
         doPostReceive = true;
     }
 
@@ -104,7 +106,6 @@ class tRxClock
     void Init(uint16_t period_ms);
     void SetPeriod(uint16_t period_ms);
     void Reset(void);
-    bool CheckDoPostReceive(void);
 
   private:
     bool initialized = false;
@@ -114,6 +115,7 @@ class tRxClock
 void tRxClock::Init(uint16_t period_ms)
 {
     CLOCK_PERIOD_10US = period_ms * 100; // frame rate in units of 10us
+    doPostReceive = false;
 
     CNT_10us = 0;
     CCR1 = CLOCK_PERIOD_10US;
@@ -172,27 +174,11 @@ IRAM_ATTR void tRxClock::Reset(void)
 #endif
     CCR1 = CNT_10us + CLOCK_PERIOD_10US;
     CCR3 = CNT_10us + CLOCK_SHIFT_10US;
-#ifdef ESP32
-    taskEXIT_CRITICAL(&esp32_spinlock);
-#elif defined ESP8266
     MS_C = CNT_10us + CLOCK_CNT_1MS;  // MS_C only used on ESP8266
-    interrupts();
-#endif
-}
-
-
-IRAM_ATTR bool tRxClock::CheckDoPostReceive(void)
-{
 #ifdef ESP32
-    taskENTER_CRITICAL(&esp32_spinlock);
-    if (doPostReceiveESP32) { 
-        doPostReceiveESP32 = false;
-        doPostReceive = true;
-    } 
     taskEXIT_CRITICAL(&esp32_spinlock);
-    return doPostReceive;
 #elif defined ESP8266
-    return doPostReceive;  // same for STM32
+    interrupts();
 #endif
 }
 

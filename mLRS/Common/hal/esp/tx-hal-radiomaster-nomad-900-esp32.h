@@ -59,7 +59,7 @@
 #define UARTD_TXBUFSIZE           TX_SERIAL_TXBUFSIZE
 #define UARTD_RXBUFSIZE           TX_SERIAL_RXBUFSIZE
 
-#define UARTE_USE_SERIAL1 // JR bay pin5
+#define UARTE_USE_SERIAL1 // in port, connected to JR bay pin5
 #define UARTE_BAUD                 100000
 #define UARTE_USE_TX_IO            -1
 #define UARTE_USE_RX_IO            IO_P4
@@ -143,9 +143,9 @@ void sx2_dio_exti_isr_clearflag(void) {}
 
 void in_init_gpio(void) {}
 
-void in_set_normal(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, false); }
+void in_set_normal(void) { gpio_matrix_in((gpio_num_t)UARTE_USE_RX_IO, U1RXD_IN_IDX, false); }
 
-void in_set_inverted(void) { gpio_matrix_in((gpio_num_t)UART_USE_RX_IO, U1RXD_IN_IDX, true); }
+void in_set_inverted(void) { gpio_matrix_in((gpio_num_t)UARTE_USE_RX_IO, U1RXD_IN_IDX, true); }
 
 
 //-- Button
