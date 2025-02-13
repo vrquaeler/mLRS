@@ -17,7 +17,7 @@
 // the following variables are shared across cores (used in the isr on core 0) and need to be protected with spinlocks:
 //     CNT_10us, CCR1, CCR3, CLOCK_PERIOD_10US
 // CLOCK_SHIFT_10US is a define, so not included
-// doPostReceive is only read / write by either Core at the same time, so okay to not use spinlock
+// doPostReceive is only potentially read / write by either Core at the same time, so okay to not use spinlock
 
 
 #define CLOCK_SHIFT_10US          100 // 75 // 100 // 1 ms
