@@ -59,7 +59,7 @@
 #define UARTD_TXBUFSIZE           TX_SERIAL_TXBUFSIZE
 #define UARTD_RXBUFSIZE           TX_SERIAL_RXBUFSIZE
 
-#define UARTE_USE_SERIAL1 // in port, connected to JR bay pin5
+#define UARTE_USE_SERIAL1 // in port, uses JRPin5
 #define UARTE_BAUD                 100000
 #define UARTE_USE_TX_IO            -1
 #define UARTE_USE_RX_IO            IO_P4
