@@ -159,7 +159,8 @@ void button_init(void)
     gpio_init(BUTTON2, IO_MODE_INPUT_PU);
 }
 
-IRAM_ATTR bool button_pressed(void) { return (gpio_read_activelow(BUTTON) || gpio_read_activelow(BUTTON2)) ? true : false; }
+IRAM_ATTR bool button_pressed(void) { return (gpio_read_activelow(BUTTON)) ? true : false; }
+IRAM_ATTR bool button2_pressed(void) { return (gpio_read_activelow(BUTTON2)) ? true : false; }
 
 
 //-- LEDs

@@ -684,6 +684,8 @@ uint16_t connect_tmo_cnt;
 uint8_t connect_sync_cnt;
 bool connect_occured_once;
 
+uint32_t button2count = 0;
+
 
 bool connected(void)
 {
@@ -811,6 +813,24 @@ INITCONTROLLER_END
             disp.Tick_ms(); // can take long
             fan.SetPower(sx.RfPower_dbm());
             fan.Tick_ms();
+
+            if (button2_pressed()) {
+               button2count++;
+            } else {
+                if (button2count > 0) {
+                    button2count--;
+                }            
+            }
+            
+
+            if (button2count > 4000) {
+                ledRGB.SetPixelColor(0, RgbColor(128, 0, 128));
+                ledRGB.SetPixelColor(1, RgbColor(128, 0, 128));
+                ledRGB.Show();
+                delay(1000);
+                esp.EnterFlash();
+            }
+
 
             if (!tick_1hz) {
                 dbg.puts(".");
