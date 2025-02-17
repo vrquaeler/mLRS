@@ -201,6 +201,11 @@ void uartb_init(void)
     // isr is enabled !
 }
 
+void uartb_rx_enableisr(FunctionalState flag)
+{
+    // not supported on ESP, allows in functionality without lots of ifdefs
+}
+
 
 //-------------------------------------------------------
 // System bootloader
