@@ -10,6 +10,33 @@
 
 
 #include "../Common/esp-lib/esp-uart.h"
+#include <hal/uart_ll.h>
+#include <soc/soc.h>
+#include <soc/uart_reg.h>
+
+
+volatile bool transmitting;  // only used for half duplex JRPin5
+
+
+//-------------------------------------------------------
+// Clock ISR
+//-------------------------------------------------------
+
+IRQHANDLER(
+void CLOCK100US_IRQHandler(void)
+{
+    if (transmitting) { 
+        if (!uart_ll_is_tx_idle(UART_LL_GET_HW(1))) { return; }  // still transmitting
+
+        transmitting = false;
+        gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
+        gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
+        gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
+        gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);
+    
+    }
+})
+
 
 //-------------------------------------------------------
 // Pin5BridgeBase class
@@ -31,7 +58,8 @@ class tPin5BridgeBase
     void pin5_putbuf(uint8_t* const buf, uint16_t len) { uart_putbuf(buf, len); }
 
     // for in-isr processing
-    void pin5_tx_enable(bool enable_flag);
+    void pin5_tx_enable(void);  // only used for half duplex JRPin5
+    void pin5_rx_enable(void);  // only used for half duplex JRPin5
     virtual void parse_nextchar(uint8_t c) = 0;
     virtual bool transmit_start(void) = 0; // returns true if transmission should be started
 
@@ -74,6 +102,11 @@ class tPin5BridgeBase
 
 void tPin5BridgeBase::Init(void)
 {
+
+#ifndef UART_USE_SERIAL1
+  #error Serial1 must be used for JRPin5 on ESP!
+#endif
+
     state = STATE_IDLE;
     len = 0;
     cnt = 0;
@@ -82,37 +115,25 @@ void tPin5BridgeBase::Init(void)
     telemetry_start_next_tick = false;
     telemetry_state = 0;
 
-    pin5_init();
+    transmitting = false;
 
-    // A small value (like 4) for RxFIFOFull has a higher impact on main loop time,
-    // but reduces the delay between JRpin5 receive and transmit.  Choose large for now.
-    UART_SERIAL_NO.setRxFIFOFull(64);
-    UART_SERIAL_NO.onReceive((void (*)(void)) uart_rx_callback_ptr, false);
-    
+    pin5_init();
+    Serial1.setRxFIFOFull(64);  // use 64 so we always get a complete CRSF packet
+    Serial1.onReceive((void (*)(void)) uart_rx_callback_ptr, false);
+
 #ifndef JR_PIN5_FULL_DUPLEX
 
-#ifdef UART_USE_SERIAL
-  #define UART_SERIAL_NO       Serial
-#elif defined UART_USE_SERIAL1
-  #define UART_SERIAL_NO       Serial1
-#elif defined UART_USE_SERIAL2
-  #define UART_SERIAL_NO       Serial2
-#else
-  #error UART_SERIAL_NO must be defined!
-#endif
-    UART_SERIAL_NO.setMode(UART_MODE_RS485_HALF_DUPLEX);
+    xTaskCreatePinnedToCore([](void *parameter) {
+        hw_timer_t* timer1_cfg = nullptr;
+        timer1_cfg = timerBegin(1, 800, 1);  // Timer 1, APB clock is 80 Mhz | divide by 800 is 100 KHz / 10 us, count up
+        timerAttachInterrupt(timer1_cfg, &CLOCK100US_IRQHandler, true);
+        timerAlarmWrite(timer1_cfg, 10, true); // 10 * 10 = 200 us
+        timerAlarmEnable(timer1_cfg);
+        vTaskDelete(NULL);
+    }, "TimerSetup", 2048, NULL, 1, NULL, 0);  // last argument here is Core 0, ignored on ESP32C3
 
-    gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
-    gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);  // Should be pulldown if we had inverted open drain
-    gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO); // But would pulup help?
+    pin5_rx_enable();
 
-    gpio_set_level((gpio_num_t)UART_USE_TX_IO, 0);
-    gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT_OUTPUT);
-    gpio_matrix_out((gpio_num_t)UART_USE_TX_IO, U1TXD_OUT_IDX, true, false);
-    // We really want inverted open-drain, but apparently it is not possible.
-    // Because of the 51 Ohm resistor tested radios seem to utilize on their output,
-    // this reduces the pull enough to maintain a usable signal when the handset is sending.
-    gpio_set_drive_capability((gpio_num_t)UART_USE_TX_IO, GPIO_DRIVE_CAP_0);
 #endif
 }
 
@@ -133,22 +154,53 @@ void tPin5BridgeBase::pin5_init(void)
 }
 
 
-void tPin5BridgeBase::pin5_tx_enable(bool enable_flag)
+void IRAM_ATTR tPin5BridgeBase::pin5_tx_enable(void)
 {
-    // not used
+#ifndef JR_PIN5_FULL_DUPLEX
+    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_FLOATING);
+    gpio_set_level((gpio_num_t)UART_USE_TX_IO, 0);
+    gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_OUTPUT);
+    constexpr uint8_t MATRIX_DETACH_IN_LOW = 0x30; // routes 0 to matrix slot
+    gpio_matrix_in(MATRIX_DETACH_IN_LOW, U1RXD_IN_IDX, false); // Disconnect RX from all pads
+    gpio_matrix_out((gpio_num_t)UART_USE_TX_IO, U1TXD_OUT_IDX, true, false);
+#endif
+}
+
+void IRAM_ATTR tPin5BridgeBase::pin5_rx_enable(void)
+{
+#ifndef JR_PIN5_FULL_DUPLEX
+    gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
+    gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
+    gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
+    gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);
+#endif
 }
 
 
-void tPin5BridgeBase::pin5_rx_callback(uint8_t c)
+void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
     // poll uart
     while (uart_rx_available() && state != STATE_TRANSMIT_START) { // read at most 1 message
-        parse_nextchar(uart_getc());
+        uint16_t bytesAvailable = uart_rx_bytesavailable();
+        uint16_t i = 0;
+        char buffer[bytesAvailable];
+        
+        uart_getbuf(buffer, bytesAvailable);
+
+        while (i < bytesAvailable && state != STATE_TRANSMIT_START) {
+          parse_nextchar(buffer[i++]);
+        }
     }
 
     // send telemetry after every received message
-    if (state == STATE_TRANSMIT_START) { // time to send telemetry
-        transmit_start();
+    if (state == STATE_TRANSMIT_START) {
+        pin5_tx_enable();
+        
+        if(!transmit_start()) {   
+            transmitting = false;
+            pin5_rx_enable();
+        } else { transmitting = true; }
+        
         state = STATE_IDLE;
     }
 }
