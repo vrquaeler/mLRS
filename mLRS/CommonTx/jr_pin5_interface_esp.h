@@ -10,6 +10,7 @@
 
 
 #include "../Common/esp-lib/esp-uart.h"
+#include "../Common/protocols/crsf_protocol.h"
 #include <hal/uart_ll.h>
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
@@ -134,7 +135,7 @@ void tPin5BridgeBase::Init(void)
         hw_timer_t* timer1_cfg = nullptr;
         timer1_cfg = timerBegin(1, 800, 1);  // Timer 1, APB clock is 80 Mhz | divide by 800 is 100 KHz / 10 us, count up
         timerAttachInterrupt(timer1_cfg, &CLOCK100US_IRQHandler, true);
-        timerAlarmWrite(timer1_cfg, 10, true); // 10 * 10 = 200 us
+        timerAlarmWrite(timer1_cfg, 10, true); // 10 * 10 = 100 us
         timerAlarmEnable(timer1_cfg);
         vTaskDelete(NULL);
     }, "TimerSetup", 2048, NULL, 1, NULL, 0);  // last argument here is Core 0, ignored on ESP32C3
@@ -186,17 +187,17 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_enable(void)
 void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
     // poll uart
-    while (uart_rx_available() && state != STATE_TRANSMIT_START) { // read at most 1 message
-        uint16_t bytesAvailable = uart_rx_bytesavailable();
-        uint16_t i = 0;
-        char buffer[bytesAvailable];
-        
-        uart_getbuf(buffer, bytesAvailable);
-
-        while (i < bytesAvailable && state != STATE_TRANSMIT_START) {
-          parse_nextchar(buffer[i++]);
-        }
+    char buf[CRSF_FRAME_LEN_MAX + 16];
+    uint16_t available = uart_rx_bytesavailable();
+    available = MIN(available, CRSF_FRAME_LEN_MAX);
+    
+    uart_getbuf(buf, available);
+    
+    for (uint16_t i = 0; i < available; i++) {
+      if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
+      parse_nextchar(buf[i]);
     }
+
 
     // send telemetry after every received message
     if (state == STATE_TRANSMIT_START) {
