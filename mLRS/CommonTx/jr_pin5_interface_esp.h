@@ -170,6 +170,7 @@ void IRAM_ATTR tPin5BridgeBase::pin5_tx_enable(void)
 #endif
 }
 
+
 void IRAM_ATTR tPin5BridgeBase::pin5_rx_enable(void)
 {
 #ifndef JR_PIN5_FULL_DUPLEX
