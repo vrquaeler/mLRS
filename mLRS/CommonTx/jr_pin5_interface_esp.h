@@ -12,9 +12,6 @@
 #include "../Common/esp-lib/esp-uart.h"
 #include "../Common/protocols/crsf_protocol.h"
 #include <hal/uart_ll.h>
-#include <soc/soc.h>
-#include <soc/uart_reg.h>
-
 
 volatile bool transmitting;  // only used for half duplex JRPin5
 
@@ -205,7 +202,9 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
         if(!transmit_start()) {   
             transmitting = false;
             pin5_rx_enable();
-        } else { transmitting = true; }
+        } else {
+            transmitting = true;
+        }
         
         state = STATE_IDLE;
     }
