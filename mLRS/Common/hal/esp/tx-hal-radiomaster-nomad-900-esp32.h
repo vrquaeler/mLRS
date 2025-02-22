@@ -174,7 +174,7 @@ bool ledBlueState;
 
 uint8_t pixelNum = 2;
 
-NeoPixelBus<NeoGrbFeature, NeoEsp32I2s0Ws2812xMethod> ledRGB(pixelNum, LED_RGB);
+NeoPixelBus<NeoGrbFeature, NeoEsp32Rmt0Ws2812xMethod> ledRGB(pixelNum, LED_RGB);
 
 void leds_init(void)
 {

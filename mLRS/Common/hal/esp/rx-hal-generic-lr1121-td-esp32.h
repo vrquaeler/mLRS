@@ -147,7 +147,7 @@ bool ledRedState;
 bool ledGreenState;
 bool ledBlueState;
 
-NeoPixelBus<NeoGrbFeature, NeoEsp32I2s0Ws2812xMethod> ledRGB(1, LED_RED);
+NeoPixelBus<NeoGrbFeature, NeoEsp32Rmt0Ws2812xMethod> ledRGB(1, LED_RED);
 
 void leds_init(void)
 {
