@@ -353,14 +353,8 @@ void tRxMavlink::parse_serial_in_link_out(void)
 #ifdef USE_FEATURE_MAVLINKX
     fmav_result_t result;
     if (fifo_link_out.HasSpace(290)) { // we have space for a full MAVLink message, so can safely parse
-        char buf[64];
-        uint16_t available = serial.available();
-        available = MIN(available, 64);
-        
-        serial.getbuf(buf, available);
-
-        for (uint16_t i = 0; i < available; i++) {
-            char c = buf[i];
+        while (serial.available()) {
+            char c = serial.getc();
             bytes_parser_in++; // memorize it is still in processing
             fmav_parse_and_check_to_frame_buf(&result, buf_serial_in, &status_serial_in, c);
             if (result.res == FASTMAVLINK_PARSE_RESULT_OK) {
@@ -381,6 +375,8 @@ void tRxMavlink::parse_serial_in_link_out(void)
                 bytes_parser_in = 0;
 
                 handle_msg(&msg_link_out);
+
+                break; // give the loop a chance before handling a further message
             }
         }
     }
