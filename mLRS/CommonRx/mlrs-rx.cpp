@@ -96,7 +96,7 @@
 #include "../Common/diversity.h"
 #include "../Common/arq.h"
 #include "../Common/rf_power.h"
-#include "../Common/time_stats.h" // un-comment if you want to use
+//#include "../Common/time_stats.h" // un-comment if you want to use
 //#include "../Common/test.h" // un-comment if you want to compile for board test
 
 #include "out_interface.h" // this includes uart.h, out.h, declares tOut out
@@ -585,7 +585,7 @@ RESTARTCONTROLLER
     resetSysTask(); // helps in avoiding too short first loop
 INITCONTROLLER_END
 
-    TS_END(0,1000,true);
+    //TS_END(0,1000,true);
 
     //-- SysTask handling
 
