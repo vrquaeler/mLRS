@@ -164,7 +164,7 @@ void _uart$_initit(uint32_t baud, UARTPARITYENUM parity, UARTSTOPBITENUM stopbit
     UART$_SERIAL_NO.begin(baud, config);
 #endif
 
-    UART$_SERIAL_NO.setRxFIFOFull(8);  // > 57600 baud sets to 120 which is too much, buffer only 128 bytes
+    UART$_SERIAL_NO.setRxFIFOFull(64);  // > 57600 baud sets to 120 which is too much, buffer only 128 bytes
     UART$_SERIAL_NO.setRxTimeout(1);   // wait for 1 symbol (~11 bits) to trigger Rx ISR, default 2
 
 #elif defined ESP8266

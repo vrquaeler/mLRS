@@ -70,6 +70,7 @@ class tSerialBase
     virtual void putbuf(uint8_t* const buf, uint16_t len) {}
     virtual bool available(void) { return false; }
     virtual char getc(void) { return '\0'; }
+    virtual void getbuf(char* const buf, uint16_t len) {}
     virtual void flush(void) {}
     virtual uint16_t bytes_available(void) { return 0; }
     virtual bool has_systemboot(void) { return false; }
