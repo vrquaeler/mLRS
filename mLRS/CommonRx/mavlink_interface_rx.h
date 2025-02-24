@@ -39,7 +39,7 @@ extern tSetup Setup;
 #endif
 
 #define MAVLINK_BUF_SIZE              300 // needs to be larger than max MAVLink frame size = 280 bytes
-#define MAVLINK_CHUNK_SIZE            16  // maximum number of bytes do read out in a single loop
+#define MAVLINK_CHUNK_SIZE            16  // maximum number of bytes to read out in a single loop
 
 #define MAVLINK_OPT_FAKE_PARAMFTP     2 // 0: off, 1: always, 2: determined from mode & baudrate
 
