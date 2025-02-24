@@ -362,7 +362,7 @@ void tRxMavlink::parse_serial_in_link_out(void)
             serial.getbuf(buf, MAVLINK_CHUNK_SIZE);
             
             for (uint16_t i = 0; i < MAVLINK_CHUNK_SIZE; i++) {
-                
+                char c = buf[i]
                 bytes_parser_in++; // memorize it is still in processing
                 fmav_parse_and_check_to_frame_buf(&result, buf_serial_in, &status_serial_in, c);
                 if (result.res == FASTMAVLINK_PARSE_RESULT_OK) {
