@@ -351,7 +351,7 @@ typedef enum {
 void tRxMavlink::parse_serial_in_link_out(void)
 {
     // parse serial in -> link out
-    #ifdef USE_FEATURE_MAVLINKX
+#ifdef USE_FEATURE_MAVLINKX
     fmav_result_t result;
     if (fifo_link_out.HasSpace(290)) { // we have space for a full MAVLink message, so can safely parse
         
