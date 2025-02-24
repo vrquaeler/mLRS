@@ -39,6 +39,7 @@ extern tSetup Setup;
 #endif
 
 #define MAVLINK_BUF_SIZE              300 // needs to be larger than max MAVLink frame size = 280 bytes
+#define MAVLINK_CHUNK_SIZE            16  // maximum number of bytes do read out in a single loop
 
 #define MAVLINK_OPT_FAKE_PARAMFTP     2 // 0: off, 1: always, 2: determined from mode & baudrate
 
@@ -350,33 +351,39 @@ typedef enum {
 void tRxMavlink::parse_serial_in_link_out(void)
 {
     // parse serial in -> link out
-#ifdef USE_FEATURE_MAVLINKX
+    #ifdef USE_FEATURE_MAVLINKX
     fmav_result_t result;
     if (fifo_link_out.HasSpace(290)) { // we have space for a full MAVLink message, so can safely parse
-        while (serial.available()) {
-            char c = serial.getc();
-            bytes_parser_in++; // memorize it is still in processing
-            fmav_parse_and_check_to_frame_buf(&result, buf_serial_in, &status_serial_in, c);
-            if (result.res == FASTMAVLINK_PARSE_RESULT_OK) {
+        
+        uint16_t available = serial.bytes_available();
 
-                // TODO: this could be be done more efficiently by not going via msg_link_out
-                // but by directly going buf_serial_in -> _buf
+        if (available > MAVLINK_CHUNK_SIZE) {
+            char buf[MAVLINK_CHUNK_SIZE];
+            serial.getbuf(buf, MAVLINK_CHUNK_SIZE);
+            
+            for (uint16_t i = 0; i < MAVLINK_CHUNK_SIZE; i++) {
+                
+                bytes_parser_in++; // memorize it is still in processing
+                fmav_parse_and_check_to_frame_buf(&result, buf_serial_in, &status_serial_in, c);
+                if (result.res == FASTMAVLINK_PARSE_RESULT_OK) {
 
-                fmav_frame_buf_to_msg(&msg_link_out, &result, buf_serial_in); // requires RESULT_OK
+                    // TODO: this could be be done more efficiently by not going via msg_link_out
+                    // but by directly going buf_serial_in -> _buf
 
-                uint16_t len;
-                if (Setup.Rx.SerialLinkMode == SERIAL_LINK_MODE_MAVLINK_X) {
-                    len = fmavX_msg_to_frame_bufX(_buf, &msg_link_out); // X frame now in _buf
-                } else {
-                    len = fmav_msg_to_frame_buf(_buf, &msg_link_out);
+                    fmav_frame_buf_to_msg(&msg_link_out, &result, buf_serial_in); // requires RESULT_OK
+
+                    uint16_t len;
+                    if (Setup.Rx.SerialLinkMode == SERIAL_LINK_MODE_MAVLINK_X) {
+                        len = fmavX_msg_to_frame_bufX(_buf, &msg_link_out); // X frame now in _buf
+                    } else {
+                        len = fmav_msg_to_frame_buf(_buf, &msg_link_out);
+                    }
+
+                    fifo_link_out.PutBuf(_buf, len);
+                    bytes_parser_in = 0;
+
+                    handle_msg(&msg_link_out);
                 }
-
-                fifo_link_out.PutBuf(_buf, len);
-                bytes_parser_in = 0;
-
-                handle_msg(&msg_link_out);
-
-                break; // give the loop a chance before handling a further message
             }
         }
     }
