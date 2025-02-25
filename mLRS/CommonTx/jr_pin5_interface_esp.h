@@ -154,7 +154,7 @@ void tPin5BridgeBase::TelemetryStart(void)
 
 void tPin5BridgeBase::pin5_init(void)
 {
-    uart_init();
+    serial.Init();
 }
 
 
@@ -189,7 +189,7 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
     uint16_t available = uart_rx_bytesavailable();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
     
-    uart_getbuf(buf, available);
+    serial.getbuf(buf, available);
     
     for (uint16_t i = 0; i < available; i++) {
         if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
@@ -233,15 +233,15 @@ void tPin5BridgeBase::CheckAndRescue(void)
 class tJrPin5SerialPort : public tSerialBase
 {
   public:
-    // void Init(void) override { uart_init(); }
+    void Init(void) override { uart_init(); }
     void SetBaudRate(uint32_t baud) override { uart_setprotocol(baud, XUART_PARITY_NO, UART_STOPBIT_1); }
     bool full(void) { return !uart_tx_notfull(); }
     void putbuf(uint8_t* const buf, uint16_t len) override { uart_putbuf(buf, len); }
     bool available(void) override { return uart_rx_available(); }
     char getc(void) override { return uart_getc(); }
+    void getbuf(char* const buf, uint16_t len) override { uart_getbuf(buf, len); }
     void flush(void) override { uart_rx_flush(); uart_tx_flush(); }
     uint16_t bytes_available(void) override { return uart_rx_bytesavailable(); }
-    // bool has_systemboot(void) override { return uart_has_systemboot(); }
 };
 
 tJrPin5SerialPort jrpin5serial;
