@@ -54,7 +54,7 @@ class tPin5BridgeBase
     void pin5_init(void) { uart_init(); }
     void pin5_tx_start(void) {}
     void pin5_putbuf(uint8_t* const buf, uint16_t len) { uart_putbuf(buf, len); }
-    void pin5_getbuf(char* buf, uint16_t len) { uart_getbuf(buf, len); }
+    void pin5_getbuf(char* const buf, uint16_t len) { uart_getbuf(buf, len); }
 
     // for in-isr processing
     void IRAM_ATTR pin5_tx_enable(void);  // only used for half duplex JRPin5
