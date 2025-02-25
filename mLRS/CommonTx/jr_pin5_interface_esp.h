@@ -19,6 +19,7 @@ volatile bool transmitting;  // only used for half duplex JRPin5
 // Clock ISR
 //-------------------------------------------------------
 
+// 100 us check to determine when to switch back to receive, only for half-duplex
 IRQHANDLER(
 void CLOCK100US_IRQHandler(void)
 {
@@ -123,8 +124,11 @@ void tPin5BridgeBase::Init(void)
 
 #ifndef JR_PIN5_FULL_DUPLEX
 
+    // configure the pin for receive
     pin5_rx_enable();
 
+    
+    // setup the timer interrupt, only needs to be done on cold boot
     if (initialized) return;
 
     xTaskCreatePinnedToCore([](void *parameter) {
@@ -173,7 +177,7 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_enable(void)
 
 void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
-    // poll uart
+    // poll uart, read a full CRSF frame
     char buf[CRSF_FRAME_LEN_MAX + 16];
     uint16_t available = uart_rx_bytesavailable();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
@@ -181,7 +185,7 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
     pin5_getbuf(buf, available);
     
     for (uint16_t i = 0; i < available; i++) {
-        if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
+        //if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
         parse_nextchar(buf[i]);
     }
 
@@ -199,26 +203,6 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
         state = STATE_IDLE;
     }
 }
-
-
-//-------------------------------------------------------
-// Pin5 Serial class
-
-class tJrPin5SerialPort : public tSerialBase
-{
-  public:
-    void Init(void) override { uart_init(); }
-    void SetBaudRate(uint32_t baud) override { uart_setprotocol(baud, XUART_PARITY_NO, UART_STOPBIT_1); }
-    bool full(void) { return !uart_tx_notfull(); }
-    void putbuf(uint8_t* const buf, uint16_t len) override { uart_putbuf(buf, len); }
-    bool available(void) override { return uart_rx_available(); }
-    char getc(void) override { return uart_getc(); }
-    void getbuf(char* const buf, uint16_t len) override { uart_getbuf(buf, len); }
-    void flush(void) override { uart_rx_flush(); uart_tx_flush(); }
-    uint16_t bytes_available(void) override { return uart_rx_bytesavailable(); }
-};
-
-tJrPin5SerialPort jrpin5serial;
 
 
 #endif // JRPIN5_INTERFACE_ESP_H
