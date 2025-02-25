@@ -154,7 +154,7 @@ void tPin5BridgeBase::TelemetryStart(void)
 
 void tPin5BridgeBase::pin5_init(void)
 {
-    serial.Init();
+    uart_nit();
 }
 
 
@@ -189,7 +189,7 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
     uint16_t available = uart_rx_bytesavailable();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
     
-    serial.getbuf(buf, available);
+    uart_getbuf(buf, available);
     
     for (uint16_t i = 0; i < available; i++) {
         if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
