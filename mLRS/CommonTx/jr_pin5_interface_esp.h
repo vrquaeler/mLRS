@@ -49,21 +49,21 @@ class tPin5BridgeBase
 
     void TelemetryStart(void) { telemetry_start_next_tick = true; }
 
-    // interface to the uart hardware peripheral used for the bridge, may be called in isr context
+    // interface to the uart hardware peripheral used for the bridge
     void pin5_init(void) { uart_init(); }
     void pin5_tx_start(void) {}
     void pin5_putbuf(uint8_t* const buf, uint16_t len) { uart_putbuf(buf, len); }
     void pin5_getbuf(char* const buf, uint16_t len) { uart_getbuf(buf, len); }
-
-    // for in-isr processing
     void IRAM_ATTR pin5_tx_enable(void);  // only used for half duplex JRPin5
     void IRAM_ATTR pin5_rx_enable(void);  // only used for half duplex JRPin5
+
+    // for in-isr processing
     virtual void parse_nextchar(uint8_t c) = 0;
     virtual bool transmit_start(void) = 0; // returns true if transmission should be started
 
     // actual isr functions
     void IRAM_ATTR pin5_rx_callback(uint8_t c);
-    void pin5_tc_callback(void) {}
+    void pin5_tc_callback(void) {}  // not used on ESP32
 
     // parser
     typedef enum {
