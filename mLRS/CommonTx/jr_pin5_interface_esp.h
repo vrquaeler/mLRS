@@ -48,22 +48,23 @@ class tPin5BridgeBase
     bool telemetry_start_next_tick;
     uint16_t telemetry_state;
 
-    void TelemetryStart(void);
+    void TelemetryStart(void) { telemetry_start_next_tick = true; }
 
     // interface to the uart hardware peripheral used for the bridge, may be called in isr context
-    void pin5_init(void);
+    void pin5_init(void) { uart_init(); }
     void pin5_tx_start(void) {}
     void pin5_putbuf(uint8_t* const buf, uint16_t len) { uart_putbuf(buf, len); }
+    void pin5_getbuf(char* buf, uint16_t len) { uart_getbuf(buf, len); }
 
     // for in-isr processing
-    void pin5_tx_enable(void);  // only used for half duplex JRPin5
-    void pin5_rx_enable(void);  // only used for half duplex JRPin5
+    void IRAM_ATTR pin5_tx_enable(void);  // only used for half duplex JRPin5
+    void IRAM_ATTR pin5_rx_enable(void);  // only used for half duplex JRPin5
     virtual void parse_nextchar(uint8_t c) = 0;
     virtual bool transmit_start(void) = 0; // returns true if transmission should be started
 
     // actual isr functions
-    void pin5_rx_callback(uint8_t c);
-    void pin5_tc_callback(void);
+    void IRAM_ATTR pin5_rx_callback(uint8_t c);
+    void pin5_tc_callback(void) {}
 
     // parser
     typedef enum {
@@ -94,7 +95,7 @@ class tPin5BridgeBase
     uint16_t tlast_us;
 
     // check and rescue
-    void CheckAndRescue(void);
+    void CheckAndRescue(void) {}
 
   private:
     bool initialized = false;
@@ -119,7 +120,6 @@ void tPin5BridgeBase::Init(void)
     transmitting = false;
 
     pin5_init();
-    Serial1.setRxFIFOFull(64);  // use 64 so we always get a complete CRSF packet
     Serial1.onReceive((void (*)(void)) uart_rx_callback_ptr, false);
 
 #ifndef JR_PIN5_FULL_DUPLEX
@@ -142,21 +142,8 @@ void tPin5BridgeBase::Init(void)
 }
 
 
-void tPin5BridgeBase::TelemetryStart(void)
-{
-    telemetry_start_next_tick = true;
-}
-
-
 //-------------------------------------------------------
 // Interface to the uart hardware peripheral used for the bridge
-// except pin5_init() called in isr context
-
-void tPin5BridgeBase::pin5_init(void)
-{
-    uart_nit();
-}
-
 
 void IRAM_ATTR tPin5BridgeBase::pin5_tx_enable(void)
 {
@@ -182,6 +169,9 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_enable(void)
 }
 
 
+//-------------------------------------------------------
+// Receiver callback
+
 void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
     // poll uart
@@ -189,7 +179,7 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
     uint16_t available = uart_rx_bytesavailable();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
     
-    uart_getbuf(buf, available);
+    pin5_getbuf(buf, available);
     
     for (uint16_t i = 0; i < available; i++) {
         if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
@@ -209,21 +199,6 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
         
         state = STATE_IDLE;
     }
-}
-
-
-void tPin5BridgeBase::pin5_tc_callback(void)
-{
-    // not used
-}
-
-
-//-------------------------------------------------------
-// Check and rescue
-
-void tPin5BridgeBase::CheckAndRescue(void)
-{
-    // not needed
 }
 
 
