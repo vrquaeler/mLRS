@@ -104,7 +104,7 @@ class tSerialPort : public tSerialBase
     void putbuf(uint8_t* const buf, uint16_t len) override { uartb_putbuf(buf, len); }
     bool available(void) override { return uartb_rx_available(); }
     char getc(void) override { return uartb_getc(); }
-    void getbuf(char* buf, uint16_t len) override { return uartb_getbuf(buf, len); }
+    void getbuf(char* const buf, uint16_t len) override { uartb_getbuf(buf, len); }
     void flush(void) override { uartb_rx_flush(); uartb_tx_flush(); }
     uint16_t bytes_available(void) override { return uartb_rx_bytesavailable(); }
     bool has_systemboot(void) override { return uartb_has_systemboot(); }
