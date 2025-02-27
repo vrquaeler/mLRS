@@ -354,10 +354,7 @@ void tRxMavlink::parse_serial_in_link_out(void)
 #ifdef USE_FEATURE_MAVLINKX
     fmav_result_t result;
     if (fifo_link_out.HasSpace(290)) { // we have space for a full MAVLink message, so can safely parse
-        
-        uint16_t available = serial.bytes_available();
-
-        if (available > MAVLINK_CHUNK_SIZE) {
+        if (serial.bytes_available() > MAVLINK_CHUNK_SIZE) {
             char buf[MAVLINK_CHUNK_SIZE];
             serial.getbuf(buf, MAVLINK_CHUNK_SIZE);
             
