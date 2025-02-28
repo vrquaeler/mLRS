@@ -24,14 +24,13 @@ IRQHANDLER(
 void CLOCK100US_IRQHandler(void)
 {
     if (transmitting) { 
-        if (!uart_ll_is_tx_idle(UART_LL_GET_HW(1))) { return; }  // still transmitting
-
-        transmitting = false;
-        gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
-        gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
-        gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
-        gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);
-    
+        if (uart_ll_is_tx_idle(UART_LL_GET_HW(1))) { 
+            transmitting = false;
+            gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
+            gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
+            gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
+            gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);        
+        }
     }
 })
 
@@ -192,14 +191,8 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
     // send telemetry after every received message
     if (state == STATE_TRANSMIT_START) {
         pin5_tx_enable();
-        
-        if(!transmit_start()) {   
-            transmitting = false;
-            pin5_rx_enable();
-        } else {
-            transmitting = true;
-        }
-        
+        transmitting = transmit_start();
+        if(!transmitting) { pin5_rx_enable(); }
         state = STATE_IDLE;
     }
 }
