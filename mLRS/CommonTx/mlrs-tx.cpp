@@ -814,14 +814,14 @@ INITCONTROLLER_END
             fan.SetPower(sx.RfPower_dbm());
             fan.Tick_ms();
 
+#ifdef TX_ELRS_RADIOMASTER_NOMAD_900_ESP32
             if (button2_pressed()) {
                button2count++;
             } else {
                 if (button2count > 0) {
                     button2count--;
                 }            
-            }
-            
+            }        
 
             if (button2count > 4000) {
                 ledRGB.SetPixelColor(0, RgbColor(128, 0, 128));
@@ -830,7 +830,7 @@ INITCONTROLLER_END
                 delay(1000);
                 esp.EnterFlash();
             }
-
+#endif
 
             if (!tick_1hz) {
                 dbg.puts(".");
