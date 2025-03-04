@@ -121,7 +121,7 @@ void tPin5BridgeBase::pin5_init(void)
   #error JRPin5 must use Serial1!
 #endif
 
-    UART_SERIAL_NO.setMode(MODE_RS485_HALF_DUPLEX);
+    UART_SERIAL_NO.setMode(UART_MODE_RS485_HALF_DUPLEX);
 
     gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
     gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);  // should be pulldown if we had inverted open drain
