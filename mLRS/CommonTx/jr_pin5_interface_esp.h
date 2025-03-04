@@ -8,6 +8,7 @@
 #ifndef JRPIN5_INTERFACE_ESP_H
 #define JRPIN5_INTERFACE_ESP_H
 
+
 #include "../Common/esp-lib/esp-uart.h"
 #include "../Common/protocols/crsf_protocol.h"
 
@@ -24,7 +25,7 @@ class tPin5BridgeBase
     bool telemetry_start_next_tick;
     uint16_t telemetry_state;
 
-    void TelemetryStart(void) { telemetry_start_next_tick = true; }
+    void TelemetryStart(void);
 
     // interface to the uart hardware peripheral used for the bridge
     void pin5_init(void);
@@ -79,11 +80,6 @@ class tPin5BridgeBase
 
 void tPin5BridgeBase::Init(void)
 {
-
-#ifndef UART_USE_SERIAL1
-  #error Serial1 must be used for JRPin5 on ESP!
-#endif
-
     state = STATE_IDLE;
     len = 0;
     cnt = 0;
@@ -111,7 +107,7 @@ void tPin5BridgeBase::TelemetryStart(void)
 // the end of a message when the callback is first initialized
 // use a fifo to play it safe
 
-void IRAM_ATTR tPin5BridgeBase::pin5_tx_enable(void)
+void tPin5BridgeBase::pin5_init(void)
 {
     uart_init();
 
@@ -159,10 +155,8 @@ IRAM_ATTR void tPin5BridgeBase::pin5_rx_callback(uint8_t c)
     }
 
     // send telemetry after every received message
-    if (state == STATE_TRANSMIT_START) {
-        pin5_tx_enable();
-        transmitting = transmit_start();
-        if(!transmitting) { pin5_rx_enable(); }
+    if (state == STATE_TRANSMIT_START) { // time to send telemetry
+        transmit_start();
         state = STATE_IDLE;
     }
 }
@@ -188,5 +182,6 @@ class tJrPin5SerialPort : public tSerialBase
 };
 
 tJrPin5SerialPort jrpin5serial;
+
 
 #endif // JRPIN5_INTERFACE_ESP_H
