@@ -10,29 +10,6 @@
 
 #include "../Common/esp-lib/esp-uart.h"
 #include "../Common/protocols/crsf_protocol.h"
-#include <hal/uart_ll.h>
-
-volatile bool transmitting;  // only used for half duplex JRPin5
-
-
-//-------------------------------------------------------
-// Clock ISR
-//-------------------------------------------------------
-
-// 100 us check to determine when to switch back to receive, only for half-duplex
-IRQHANDLER(
-void CLOCK100US_IRQHandler(void)
-{
-    if (transmitting) { 
-        if (uart_ll_is_tx_idle(UART_LL_GET_HW(1))) { 
-            transmitting = false;
-            gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
-            gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
-            gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
-            gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);        
-        }
-    }
-})
 
 
 //-------------------------------------------------------
@@ -50,20 +27,18 @@ class tPin5BridgeBase
     void TelemetryStart(void) { telemetry_start_next_tick = true; }
 
     // interface to the uart hardware peripheral used for the bridge
-    void pin5_init(void) { uart_init(); }
-    void pin5_tx_start(void) {}
+    void pin5_init(void);
     void pin5_putbuf(uint8_t* const buf, uint16_t len) { uart_putbuf(buf, len); }
     void pin5_getbuf(char* const buf, uint16_t len) { uart_getbuf(buf, len); }
-    void IRAM_ATTR pin5_tx_enable(void);  // only used for half duplex JRPin5
-    void IRAM_ATTR pin5_rx_enable(void);  // only used for half duplex JRPin5
+    uint16_t pin5_bytes_available(void) { return uart_rx_bytesavailable(); }
 
-    // for in-isr processing
+    // for callback processing
     virtual void parse_nextchar(uint8_t c) = 0;
     virtual bool transmit_start(void) = 0; // returns true if transmission should be started
 
-    // actual isr functions
-    void IRAM_ATTR pin5_rx_callback(uint8_t c);
-    void pin5_tc_callback(void) {}  // not used on ESP32
+    // callback functions
+    IRAM_ATTR void pin5_rx_callback(uint8_t c);
+    void pin5_tc_callback(void) {} // is needed in derived classes
 
     // parser
     typedef enum {
@@ -93,11 +68,12 @@ class tPin5BridgeBase
     uint8_t cnt;
     uint16_t tlast_us;
 
-    // check and rescue
+    // check and rescue, is here for compatibility, not needed
     void CheckAndRescue(void) {}
 
   private:
-    bool initialized = false;
+    tFifo<char,128> pin5_fifo; // enough for 2 full CRSF messages
+
 };
 
 
@@ -115,77 +91,71 @@ void tPin5BridgeBase::Init(void)
 
     telemetry_start_next_tick = false;
     telemetry_state = 0;
-
-    transmitting = false;
+    
+    pin5_fifo.Init();
 
     pin5_init();
-    Serial1.onReceive((void (*)(void)) uart_rx_callback_ptr, false);
+}
 
-#ifndef JR_PIN5_FULL_DUPLEX
 
-    // configure the pin for receive
-    pin5_rx_enable();
-
-    
-    // setup the timer interrupt, only needs to be done on cold boot
-    if (initialized) return;
-
-    xTaskCreatePinnedToCore([](void *parameter) {
-        hw_timer_t* timer1_cfg = nullptr;
-        timer1_cfg = timerBegin(1, 800, 1);  // Timer 1, APB clock is 80 Mhz | divide by 800 is 100 KHz / 10 us, count up
-        timerAttachInterrupt(timer1_cfg, &CLOCK100US_IRQHandler, true);
-        timerAlarmWrite(timer1_cfg, 10, true); // 10 * 10 = 100 us
-        timerAlarmEnable(timer1_cfg);
-        vTaskDelete(NULL);
-    }, "TimerSetup", 2048, NULL, 1, NULL, 0);  // last argument here is Core 0, ignored on ESP32C3
-
-    initialized = true;
-#endif
+void tPin5BridgeBase::TelemetryStart(void)
+{
+    telemetry_start_next_tick = true;
 }
 
 
 //-------------------------------------------------------
 // Interface to the uart hardware peripheral used for the bridge
+// receive callback is triggered once the radio has stopped transmitting
+// the buffer will contain a complete CRSF message or potentially
+// the end of a message when the callback is first initialized
+// use a fifo to play it safe
 
 void IRAM_ATTR tPin5BridgeBase::pin5_tx_enable(void)
 {
+    uart_init();
+
+    // onReceive uses the pin5_rx_callback function
+    // true means trigger only on a symbol timeout
+    UART_SERIAL_NO.onReceive((void (*)(void)) uart_rx_callback_ptr, true);
+    
 #ifndef JR_PIN5_FULL_DUPLEX
-    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_FLOATING);
-    gpio_set_level((gpio_num_t)UART_USE_TX_IO, 0);
-    gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_OUTPUT);
-    constexpr uint8_t MATRIX_DETACH_IN_LOW = 0x30; // routes 0 to matrix slot
-    gpio_matrix_in(MATRIX_DETACH_IN_LOW, U1RXD_IN_IDX, false); // Disconnect RX from all pads
-    gpio_matrix_out((gpio_num_t)UART_USE_TX_IO, U1TXD_OUT_IDX, true, false);
+
+#ifndef UART_USE_SERIAL1
+  #error JRPin5 must use Serial1!
 #endif
-}
 
+    UART_SERIAL_NO.setMode(MODE_RS485_HALF_DUPLEX);
 
-void IRAM_ATTR tPin5BridgeBase::pin5_rx_enable(void)
-{
-#ifndef JR_PIN5_FULL_DUPLEX
-    gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
     gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
-    gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
-    gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);
+    gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);  // should be pulldown if we had inverted open drain
+    gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO); // but would pullup help?
+
+    gpio_set_level((gpio_num_t)UART_USE_TX_IO, 0);
+    gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT_OUTPUT);
+    gpio_matrix_out((gpio_num_t)UART_USE_TX_IO, U1TXD_OUT_IDX, true, false);
+    // We really want inverted open-drain, but apparently it is not possible.
+    // Because of the 51 Ohm resistor, which the tested radios seem to utilize on their output,
+    // this reduces the pull enough to maintain a usable signal when the handset is sending.
+    gpio_set_drive_capability((gpio_num_t)UART_USE_TX_IO, GPIO_DRIVE_CAP_0);
 #endif
 }
 
 
-//-------------------------------------------------------
-// Receiver callback
-
-void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
+IRAM_ATTR void tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
-    // poll uart, read a full CRSF frame
+    // read out the buffer, put bytes in fifo
     char buf[CRSF_FRAME_LEN_MAX + 16];
-    uint16_t available = uart_rx_bytesavailable();
+    uint16_t available = pin5_bytes_available();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
     
     pin5_getbuf(buf, available);
+    pin5_fifo.PutBuf(buf, available);
     
-    for (uint16_t i = 0; i < available; i++) {
-        //if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
-        parse_nextchar(buf[i]);
+    // parse for a CRSF message
+    while (pin5_fifo.Available()) {
+        if (state >= STATE_TRANSMIT_START) break; // read at most 1 message
+        parse_nextchar(pin5_fifo.Get());
     }
 
     // send telemetry after every received message
@@ -200,7 +170,8 @@ void IRAM_ATTR tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 
 //-------------------------------------------------------
 // Pin5 Serial class
-// used for ESP passthrough flashing, commented functions are unused
+// used for ESP passthrough flashing
+// out-commented functions are unused and thus not overridden
 
 class tJrPin5SerialPort : public tSerialBase
 {
