@@ -149,8 +149,7 @@ void tPin5BridgeBase::pin5_init(void)
     pin5_rx_enable();  // configure the pin for receive    
     
     if (initialized) return;  // setup the timer interrupt, only needs to be done on cold boot
-    initialized = true;
-
+    
     xTaskCreatePinnedToCore([](void *parameter) {
         hw_timer_t* timer1_cfg = nullptr;
         timer1_cfg = timerBegin(1, 800, 1);  // Timer 1, APB clock is 80 Mhz | divide by 800 is 100 KHz / 10 us, count up
@@ -159,6 +158,9 @@ void tPin5BridgeBase::pin5_init(void)
         timerAlarmEnable(timer1_cfg);
         vTaskDelete(NULL);
     }, "TimerSetup", 2048, NULL, 1, NULL, 0);  // last argument here is Core 0, ignored on ESP32C3
+
+    initialized = true;
+
 #endif
 }
 
