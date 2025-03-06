@@ -15,8 +15,11 @@
 
 
 //-------------------------------------------------------
-// 100 us transmit check ISR
-// check to determine when to switch back to receive, only for half-duplex
+// 100 us transmit check ISR for half-duplex
+// need to know when the UART has finished transmitting, so can switch back to receive
+// arduino doesn't expose a UART transmit complete interrupt / callback like STM
+// so poll the UART state machine every 100 us using an interrupt on Core 0
+// mLRS uses Core 1, so this shouldn't have any impact
 
 volatile bool transmitting;
 
@@ -147,7 +150,7 @@ void tPin5BridgeBase::pin5_init(void)
     
     pin5_rx_enable();  // configure the pin for receive  
     
-    // setup the timer interrupt, only needs to be done on cold boot    
+    // setup the timer interrupt, only needs to be done on first boot    
     if (timerInitialized) return;  
     
     xTaskCreatePinnedToCore([](void *parameter) {
@@ -168,8 +171,8 @@ void tPin5BridgeBase::pin5_init(void)
 IRAM_ATTR void tPin5BridgeBase::pin5_tx_enable(void)
 {
 #ifndef JR_PIN5_FULL_DUPLEX
-    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_FLOATING);
-    gpio_set_level((gpio_num_t)UART_USE_TX_IO, 0);
+    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_FLOATING);  // disable pullup / pulldown
+    gpio_set_level((gpio_num_t)UART_USE_TX_IO, 0);  // set inverted level
     gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_OUTPUT);
     constexpr uint8_t MATRIX_DETACH_IN_LOW = 0x30; // routes 0 to matrix slot
     gpio_matrix_in(MATRIX_DETACH_IN_LOW, U1RXD_IN_IDX, false); // disconnect RX from all pads
@@ -182,7 +185,7 @@ IRAM_ATTR void tPin5BridgeBase::pin5_rx_enable(void)
 {
 #ifndef JR_PIN5_FULL_DUPLEX
     gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
-    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_PULLDOWN_ONLY);
+    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_PULLDOWN_ONLY); // pulldown only, since inverted
     gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
 #endif
 }
