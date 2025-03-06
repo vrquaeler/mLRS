@@ -191,7 +191,7 @@ IRAM_ATTR void tPin5BridgeBase::pin5_rx_enable(void)
 IRAM_ATTR void tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
     // read out the buffer, put bytes in fifo
-    char buf[CRSF_FRAME_LEN_MAX];
+    char buf[CRSF_FRAME_LEN_MAX + 16];
     uint16_t available = pin5_bytes_available();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
     
