@@ -146,9 +146,10 @@ void tPin5BridgeBase::pin5_init(void)
   #error JRPin5 must use Serial1!
 #endif
     
-    pin5_rx_enable();  // configure the pin for receive    
+    pin5_rx_enable();  // configure the pin for receive  
     
-    if (initialized) return;  // setup the timer interrupt, only needs to be done on cold boot
+    // setup the timer interrupt, only needs to be done on cold boot    
+    if (initialized) return;  
     
     xTaskCreatePinnedToCore([](void *parameter) {
         hw_timer_t* timer1_cfg = nullptr;
@@ -187,7 +188,6 @@ IRAM_ATTR void tPin5BridgeBase::pin5_rx_enable(void)
     gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);
 #endif
 }
-
 
 
 IRAM_ATTR void tPin5BridgeBase::pin5_rx_callback(uint8_t c)
