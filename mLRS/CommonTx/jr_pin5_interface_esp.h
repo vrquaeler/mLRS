@@ -27,9 +27,8 @@ void CLOCK100US_IRQHandler(void)
         if (uart_ll_is_tx_idle(UART_LL_GET_HW(1))) { 
             transmitting = false;
             gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
-            gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
-            gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
-            gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);        
+            gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_PULLDOWN_ONLY);
+            gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);    
         }
     }
 })
@@ -98,7 +97,7 @@ class tPin5BridgeBase
 
   private:
     tFifo<char,128> pin5_fifo; // enough for 2 full CRSF messages
-    bool initialized = false;
+    bool timerInitialized = false;
 
 };
 
@@ -149,7 +148,7 @@ void tPin5BridgeBase::pin5_init(void)
     pin5_rx_enable();  // configure the pin for receive  
     
     // setup the timer interrupt, only needs to be done on cold boot    
-    if (initialized) return;  
+    if (timerInitialized) return;  
     
     xTaskCreatePinnedToCore([](void *parameter) {
         hw_timer_t* timer1_cfg = nullptr;
@@ -160,7 +159,7 @@ void tPin5BridgeBase::pin5_init(void)
         vTaskDelete(NULL);
     }, "TimerSetup", 2048, NULL, 1, NULL, 0);  // last argument here is Core 0, ignored on ESP32C3
 
-    initialized = true;
+    timerInitialized = true;
 
 #endif
 }
@@ -183,9 +182,8 @@ IRAM_ATTR void tPin5BridgeBase::pin5_rx_enable(void)
 {
 #ifndef JR_PIN5_FULL_DUPLEX
     gpio_set_direction((gpio_num_t)UART_USE_TX_IO, GPIO_MODE_INPUT);
+    gpio_set_pull_mode((gpio_num_t)UART_USE_TX_IO, GPIO_PULLDOWN_ONLY);
     gpio_matrix_in((gpio_num_t)UART_USE_TX_IO, U1RXD_IN_IDX, true);
-    gpio_pulldown_dis((gpio_num_t)UART_USE_TX_IO);
-    gpio_pullup_dis((gpio_num_t)UART_USE_TX_IO);
 #endif
 }
 
@@ -193,7 +191,7 @@ IRAM_ATTR void tPin5BridgeBase::pin5_rx_enable(void)
 IRAM_ATTR void tPin5BridgeBase::pin5_rx_callback(uint8_t c)
 {
     // read out the buffer, put bytes in fifo
-    char buf[CRSF_FRAME_LEN_MAX + 16];
+    char buf[CRSF_FRAME_LEN_MAX];
     uint16_t available = pin5_bytes_available();
     available = MIN(available, CRSF_FRAME_LEN_MAX);
     
