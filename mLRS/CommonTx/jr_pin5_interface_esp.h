@@ -57,8 +57,6 @@ class tPin5BridgeBase
     void pin5_putbuf(uint8_t* const buf, uint16_t len) { uart_putbuf(buf, len); }
     void pin5_getbuf(char* const buf, uint16_t len) { uart_getbuf(buf, len); }
     uint16_t pin5_bytes_available(void) { return uart_rx_bytesavailable(); }
-    IRAM_ATTR void pin5_tx_enable(void);  // only for half-duplex
-    IRAM_ATTR void pin5_rx_enable(void);  // only for half-duplex
 
     // only for half-duplex
     IRAM_ATTR void pin5_tx_enable(void);
