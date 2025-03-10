@@ -1111,8 +1111,7 @@ IF_MBRIDGE(
         // update channels, do only if we use mBridge also as channels source
         // note: mBridge is used when either CHANNEL_SOURCE_MBRIDGE or SERIAL_DESTINATION_MBRDIGE, so need to check here
         if (Setup.Tx[Config.ConfigId].ChannelsSource == CHANNEL_SOURCE_MBRIDGE) {
-            channelOrder.Set(Setup.Tx[Config.ConfigId].ChannelOrder); //TODO: better than before, but still better place!?
-            channelOrder.Apply(&rcData);
+            channelOrder.SetAndApply(&rcData, Setup.Tx[Config.ConfigId].ChannelOrder);
             rfpower.Set(&rcData, Setup.Tx[Config.ConfigId].PowerSwitchChannel, Setup.Tx[Config.ConfigId].Power);
         }
         // when we receive channels packet from transmitter, we send link stats to transmitter
@@ -1176,8 +1175,7 @@ IF_MBRIDGE_OR_CRSF( // to allow CRSF mBridge emulation
 IF_CRSF(
     if (crsf.ChannelsUpdated(&rcData)) {
         // update channels
-        channelOrder.Set(Setup.Tx[Config.ConfigId].ChannelOrder); //TODO: better than before, but still better place!?
-        channelOrder.Apply(&rcData);
+        channelOrder.SetAndApply(&rcData, Setup.Tx[Config.ConfigId].ChannelOrder);
         rfpower.Set(&rcData, Setup.Tx[Config.ConfigId].PowerSwitchChannel, Setup.Tx[Config.ConfigId].Power);
     }
     uint8_t crsftask; uint8_t crsfcmd;
@@ -1220,10 +1218,9 @@ IF_CRSF(
     }
 );
 IF_IN(
-    if (in.Update(&rcData)) {
+    if (in.ChannelsUpdated(&rcData)) {
         // update channels
-        channelOrder.Set(Setup.Tx[Config.ConfigId].ChannelOrder); //TODO: better than before, but still better place!?
-        channelOrder.Apply(&rcData);
+        channelOrder.SetAndApply(&rcData, Setup.Tx[Config.ConfigId].ChannelOrder);
         rfpower.Set(&rcData, Setup.Tx[Config.ConfigId].PowerSwitchChannel, Setup.Tx[Config.ConfigId].Power);
     }
 );
