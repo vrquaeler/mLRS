@@ -400,7 +400,7 @@ for (uint16_t i = 0; i < len; i++) if (_buf[i] != buf_link_in[i]) while(1){}
 #endif
 
             // don't jump out early here, seems to be important to do all
-            //return; // do only one message per loop
+            return; // do only one message per loop
         } // if (result.res == FASTMAVLINK_PARSE_RESULT_OK)
 
     } // while (fifo_link_in.Available())
