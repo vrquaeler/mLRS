@@ -166,7 +166,7 @@ void tTxMavlink::Init(tSerialBase* const _serialport, tSerialBase* const _mbridg
 
 #ifdef USE_FEATURE_MAVLINKX
     fmavX_init();
-    fmavX_config_compression((Config.Mode == MODE_19HZ) ? 1 : 0); // use compression only in 19 Hz mode
+    fmavX_config_compression((Config.Mode == MODE_19HZ || Config.Mode == MODE_19HZ_7X) ? 1 : 0); // use compression only in 19 Hz mode
 
     status_ser_in = {};
     status_ser2_in = {};
@@ -260,7 +260,7 @@ uint8_t tTxMavlink::Task(void)
 #endif
 
     task_pending_mask = 0;
-    return TX_TASK_NONE;
+    return MAIN_TASK_NONE;
 }
 
 
@@ -399,7 +399,10 @@ if (len != result.frame_len) while(1){}
 for (uint16_t i = 0; i < len; i++) if (_buf[i] != buf_link_in[i]) while(1){}
 #endif
 
-            // don't jump out early here, seems to be important to do all
+            // Note: makes logically sense
+            // for some time it seemed important to not jump out early here, but appears to give issues with WLE however
+            // so return was re-enabled again
+            // https://github.com/olliw42/mLRS/issues/283
             return; // do only one message per loop
         } // if (result.res == FASTMAVLINK_PARSE_RESULT_OK)
 
@@ -835,7 +838,7 @@ void tTxMavlink::component_do(void)
 bool tTxMavlink::component_task(uint8_t* const task)
 {
     if (Setup.Tx[Config.ConfigId].MavlinkComponent != TX_MAVLINK_COMPONENT_ENABLED) {
-        *task = TX_TASK_NONE;
+        *task = MAIN_TASK_NONE;
         return false;
     }
 
@@ -849,13 +852,13 @@ bool tTxMavlink::component_task(uint8_t* const task)
         // we need to wait for the previous link task to finish
         // link task is not free in connection stage, so skip if not in connection stage
         if (connected_and_rx_setup_available() && !link_task_free()) {
-            *task = TX_TASK_NONE;
+            *task = MAIN_TASK_NONE;
             return true;
         }
         // delay by 50 ms, so a response message is send
         if (task_pending_delay_ms) {
             if ((millis32() - task_pending_delay_ms) < 50) {
-                *task = TX_TASK_NONE;
+                *task = MAIN_TASK_NONE;
                 return true;
             }
             task_pending_delay_ms = 0;
@@ -865,7 +868,7 @@ bool tTxMavlink::component_task(uint8_t* const task)
         return true;
     }
 
-    *task = TX_TASK_NONE;
+    *task = MAIN_TASK_NONE;
     return false;
 }
 
