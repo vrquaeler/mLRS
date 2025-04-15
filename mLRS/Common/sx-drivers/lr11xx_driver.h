@@ -28,23 +28,23 @@ const tSxLoraConfiguration Lr11xxLoraConfiguration[] = {
     { .SpreadingFactor = LR11XX_LORA_SF5,
       .Bandwidth = LR11XX_LORA_BW_500,
       .CodingRate = LR11XX_LORA_CR_4_5,
-      .PreambleLength = 20,
+      .PreambleLength = 12,
       .HeaderType = LR11XX_LORA_HEADER_DISABLE,
       .PayloadLength = FRAME_TX_RX_LEN,
       .CrcEnabled = LR11XX_LORA_CRC_DISABLE,
       .InvertIQ = LR11XX_LORA_IQ_NORMAL,
-      .TimeOverAir = 13712,
+      .TimeOverAir = 13200,
       .ReceiverSensitivity = -111,
     },
     { .SpreadingFactor = LR11XX_LORA_SF6,
       .Bandwidth = LR11XX_LORA_BW_500,
       .CodingRate = LR11XX_LORA_CR_4_5,
-      .PreambleLength = 20,
+      .PreambleLength = 12,
       .HeaderType = LR11XX_LORA_HEADER_DISABLE,
       .PayloadLength = FRAME_TX_RX_LEN,
       .CrcEnabled = LR11XX_LORA_CRC_DISABLE,
       .InvertIQ = LR11XX_LORA_IQ_NORMAL,
-      .TimeOverAir = 23584,
+      .TimeOverAir = 22560,
       .ReceiverSensitivity = -112,
     }
 };
@@ -54,8 +54,8 @@ const tSxGfskConfiguration Lr11xxGfskConfiguration[] = {
     { .br_bps = 100000,
       .PulseShape = LR11XX_GFSK_PULSESHAPE_BT_1,
       .Bandwidth = LR11XX_GFSK_BW_312000,
-      .Fdev_hz = 100000,
-      .PreambleLength = 24,
+      .Fdev_hz = 50000,
+      .PreambleLength = 16,
       .PreambleDetectorLength = LR11XX_GFSK_PREAMBLE_DETECTOR_LENGTH_8BITS,
       .SyncWordLength = 16,
       .AddrComp = LR11XX_GFSK_ADDRESS_FILTERING_DISABLE,
@@ -63,7 +63,7 @@ const tSxGfskConfiguration Lr11xxGfskConfiguration[] = {
       .PayloadLength = FRAME_TX_RX_LEN,
       .CRCType = LR11XX_GFSK_CRC_OFF,
       .Whitening = LR11XX_GFSK_WHITENING_ENABLE,
-      .TimeOverAir = 7840,
+      .TimeOverAir = 7600,
       .ReceiverSensitivity = -106  // This is a guess, data sheet is vague here
     }
 };
@@ -222,6 +222,7 @@ class Lr11xxDriverCommon : public Lr11xxDriverBase
         SetPaConfig(LR11XX_PA_SELECT_LP_PA, LR11XX_REG_PA_SUPPLY_INTERNAL, LR11XX_PA_DUTY_CYCLE_14_DBM, 0);
 #endif
         SetRfPower_dbm(gconfig->Power_dbm);
+        ClearIrq(LR11XX_IRQ_ALL);
         SetFs();
     }
 
@@ -239,17 +240,20 @@ class Lr11xxDriverCommon : public Lr11xxDriverBase
     void SendFrame(uint8_t* const data, uint8_t len, uint16_t tmo_ms)
     {
         WriteBuffer(data, len);
+        ClearIrq(LR11XX_IRQ_ALL);
         SetTx(tmo_ms * 33); // 0 = no timeout. TimeOut period in ms. LR11xx have static 30.517 uS (1 / 32768) period base, so for 1 ms needs 33 tmo value
     }
 
     void SetToRx(uint16_t tmo_ms)
     {
+        ClearIrq(LR11XX_IRQ_ALL);
         SetRx(tmo_ms * 33); // 0 = no timeout
     }
 
     void SetToIdle(void)
     {
         SetFs();
+        ClearIrq(LR11XX_IRQ_ALL);
     }
 
     void GetPacketStatus(int8_t* const RssiSync, int8_t* const Snr)
