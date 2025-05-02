@@ -10,7 +10,7 @@
 //#define MLRS_FEATURE_JRPIN5
 //#define MLRS_FEATURE_IN
 //#define MLRS_FEATURE_DIVERSITY
-//#define MLRS_FEATURE_NO_DIVERSITY
+#define MLRS_FEATURE_NO_DIVERSITY
 
 //-------------------------------------------------------
 // TX DIY DUAL-E28 BOARD02 v010 STM32F103CB
