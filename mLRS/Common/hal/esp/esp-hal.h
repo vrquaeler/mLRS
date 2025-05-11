@@ -79,6 +79,10 @@
 #include "rx-hal-generic-900-pa-esp8285.h"
 #endif
 
+#ifdef RX_ELRS_HAPPY_EP1_2400_ESP8285
+#include "rx-hal-generic-2400-esp8285.h"
+#endif
+
 #ifdef RX_ELRS_VANTAC_RX_2400_ESP8285
 #include "rx-hal-generic-2400-pa-esp8285.h"
 #endif
