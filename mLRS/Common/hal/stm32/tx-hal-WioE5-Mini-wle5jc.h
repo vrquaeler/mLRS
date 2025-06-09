@@ -17,6 +17,7 @@
 #define DEVICE_HAS_JRPIN5
 //#define DEVICE_HAS_IN
 #define DEVICE_HAS_IN_ON_JRPIN5_RX
+#define DEVICE_HAS_SERIAL_OR_COM // serial or com is selected by pressing BUTTON during power on
 #define DEVICE_HAS_DEBUG_SWUART
 #define DEVICE_HAS_SINGLE_LED
 //#define DEVICE_HAS_ESP_WIFI_BRIDGE_ON_SERIAL
@@ -32,22 +33,23 @@
 
 
 //-- UARTS
-// UARTB = serial port
-// UARTC = COM (CLI)
+// UARTB = serial port or COM (CLI)
+// UARTC = COM --
 // UARTD = serial2 BT/ESP port
 // UART  = JR bay pin5
 // UARTE = in port, SBus or whatever
 // UARTF = --
 // SWUART= debug port
 
-#define UARTB_USE_UART2_PA2PA3 // serial // PA2,PA3
+#define UARTB_USE_UART1_PB6PB7 // serial // PA2,PA3
 #define UARTB_BAUD                TX_SERIAL_BAUDRATE
 #define UARTB_USE_TX
-#define UARTB_TXBUFSIZE           TX_SERIAL_TXBUFSIZE
+#define UARTB_TXBUFSIZE           TX_COM_TXBUFSIZE_LARGE // TX_SERIAL_TXBUFSIZE // choose the bigger one
 #define UARTB_USE_TX_ISR
 #define UARTB_USE_RX
 #define UARTB_RXBUFSIZE           TX_SERIAL_RXBUFSIZE
 
+/*
 #define UARTC_USE_UART1_PB6PB7 // com USB/CLI // PB6,PB7
 #define UARTC_BAUD                TX_COM_BAUDRATE
 #define UARTC_USE_TX
@@ -55,6 +57,7 @@
 #define UARTC_USE_TX_ISR
 #define UARTC_USE_RX
 #define UARTC_RXBUFSIZE           TX_COM_RXBUFSIZE
+*/
 
 #define UART_USE_LPUART1_PC1PC0 // JR pin5, MBridge // PC1,PC0
 #define UART_BAUD                 400000
@@ -218,6 +221,28 @@ void led_green_toggle(void) { gpio_toggle(LED_GREEN); }
 void led_red_off(void) { gpio_high(LED_RED); }
 void led_red_on(void) { gpio_low(LED_RED); }
 void led_red_toggle(void) { gpio_toggle(LED_RED); }
+
+
+//-- Serial or Com Switch
+// use com if BUTTON is pressed during power up, else use serial
+// BUTTON becomes bind button later on
+
+bool r9mx_ser_or_com_serial = true; // we use serial as default
+
+void ser_or_com_init(void)
+{
+  gpio_init(BUTTON, IO_MODE_INPUT_PU, IO_SPEED_DEFAULT);
+  uint8_t cnt = 0;
+  for (uint8_t i = 0; i < 16; i++) {
+    if (gpio_read_activelow(BUTTON)) cnt++;
+  }
+  r9mx_ser_or_com_serial = !(cnt > 8);
+}
+
+bool ser_or_com_serial(void)
+{
+  return r9mx_ser_or_com_serial;
+}
 
 
 //-- 5 Way Switch
