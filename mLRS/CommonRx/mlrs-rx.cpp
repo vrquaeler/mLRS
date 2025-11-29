@@ -10,8 +10,8 @@
 
 #define DBG_MAIN(x)
 #define DBG_MAIN_SLIM(x)
-//#define DEBUG_ENABLED
-//#define FAIL_ENABLED
+#define DEBUG_ENABLED
+#define FAIL_ENABLED
 
 
 // we set the priorities here to have an overview, SysTick is at 15
@@ -95,7 +95,6 @@
 #include "../Common/common.h"
 #include "../Common/diversity.h"
 #include "../Common/arq.h"
-#include "../Common/rf_power.h"
 //#include "../Common/time_stats.h" // un-comment if you want to use
 //#include "../Common/test.h" // un-comment if you want to compile for board test
 
@@ -107,7 +106,6 @@ tPowerupCounter powerup;
 tRDiversity rdiversity;
 tTDiversity tdiversity;
 tTransmitArq tarq;
-tRfPower rfpower;
 
 
 // is required in bind.h
@@ -842,6 +840,7 @@ dbg.puts(s8toBCD_s(stats.last_rssi2));*/
                 link_state = LINK_STATE_RECEIVE; // switch back to RX
             }
             if (fhss.HopToNextBind()) {
+                bind.HopToNextBind(fhss.GetCurrBindSetupFrequencyBand());
                 link_state = LINK_STATE_RECEIVE; // switch back to RX
             }
         }

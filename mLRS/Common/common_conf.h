@@ -11,8 +11,8 @@
 #pragma once
 
 
-#define VERSION             10306 // leading zero makes it octal!
-#define VERSIONONLYSTR      "v1.3.06"
+#define VERSION             10307 // leading zero makes it octal!
+#define VERSIONONLYSTR      "v1.3.07"
 #define SETUPLAYOUT         10304 // this should be changed then Setup struct and/or serial changes
 
 
@@ -96,11 +96,23 @@
 //#define SETUP_MODE                      MODE_19HZ
 
 
-//#define SETUP_RF_BAND                    SETUP_FREQUENCY_BAND_915_MHZ_FCC
-#define SETUP_RF_BAND                    SETUP_FREQUENCY_BAND_868_MHZ // that's my privilege :)
+//#define SETUP_RF_BAND                   SETUP_FREQUENCY_BAND_915_MHZ_FCC
+#define SETUP_RF_BAND                   SETUP_FREQUENCY_BAND_868_MHZ // that's my privilege :)
 
 
-#define SETUP_RF_ORTHO                   0 // 0: off, 1: 1/3, 2: 2/3, 3: 3/3
+#define SETUP_RF_ORTHO                  0 // 0: off, 1: 1/3, 2: 2/3, 3: 3/3
+
+
+//-------------------------------------------------------
+// User-adjustable System Configs
+//-------------------------------------------------------
+
+#define TX_RADIO_LINK_SYSTEM_ID         51 // SiK uses 51, 68
+
+#define RX_RADIO_LINK_SYSTEM_ID         51 // SiK uses 51, 68
+#define RX_GCS_SYSTEM_ID                255 // default of MissionPlanner, QGC
+
+#define RX_DRONECAN_PREFERRED_NODE_ID   68
 
 
 //-------------------------------------------------------

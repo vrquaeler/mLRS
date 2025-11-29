@@ -49,6 +49,10 @@ typedef enum : uint8_t {
 } SX_FHSS_CONFIG_FREQUENCY_BAND_ENUM;
 
 
+SX_FHSS_CONFIG_FREQUENCY_BAND_ENUM cvt_to_sx_fhss_frequency_band(uint8_t setup_frequency_band);
+SETUP_FREQUENCY_BAND_ENUM cvt_to_setup_frequency_band(uint8_t sx_fhss_frequency_band);
+
+
 typedef enum {
     MODE_50HZ = 0,
     MODE_31HZ,
@@ -219,6 +223,7 @@ typedef enum {
     WIFI_PROTOCOL_TCP = 0,
     WIFI_PROTOCOL_UDP,
     WIFI_PROTOCOL_BT,
+    WIFI_PROTOCOL_UDPSTA,
     WIFI_PROTOCOL_NUM,
 } TX_WIFI_PROTOCOL_ENUM;
 
@@ -322,6 +327,9 @@ typedef enum {
 typedef enum {
     LR11xx_LORA_CONFIG_BW500_SF5_CR4_5 = 0,
     LR11xx_LORA_CONFIG_BW500_SF6_CR4_5,
+    LR11xx_LORA_CONFIG_BW800_SF5_CR4_5,
+    LR11xx_LORA_CONFIG_BW800_SF6_CR4_5,
+    LR11xx_LORA_CONFIG_BW800_SF7_CR4_5,
     LR11xx_LORA_CONFIG_NUM,
 } LR11xx_LORA_CONFIG_ENUM;
 
@@ -447,6 +455,7 @@ typedef struct
     uint16_t Tx_InMode_allowed_mask;
     uint16_t Tx_SerialDestination_allowed_mask;
     uint16_t Tx_Buzzer_allowed_mask;
+    uint16_t Tx_WiFiProt_allowed_mask;
 
     char Rx_Power_optstr[44+1];
     uint16_t Rx_Diversity_allowed_mask;
