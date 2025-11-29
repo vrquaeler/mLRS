@@ -9,7 +9,7 @@
  run_make_firmwares.py
  3rd version, doesn't use make but calls gnu directly
  gave up on cmake, hence naive by hand
- version 4.05.2025
+ version 25.11.2025
 ********************************************************
 '''
 import os
@@ -87,6 +87,10 @@ if __name__ == "__main__":
         st_root = os.path.join("/opt",'st')
 
     ST_DIR,GNU_DIR = findSTM32CubeIDEGnuTools(st_root)
+    if os.getenv("MLRS_ST_DIR"):
+        ST_DIR = os.getenv("MLRS_ST_DIR")
+    if os.getenv("MLRS_GNU_DIR"):
+        GNU_DIR = os.getenv("MLRS_GNU_DIR")
 
     if ST_DIR == '' or GNU_DIR == '' or not os.path.exists(os.path.join(ST_DIR,GNU_DIR)):
         print('ERROR: gnu-tools not found!')
@@ -460,6 +464,7 @@ MLRS_SOURCES_COMMON = [
     os.path.join('Common','channel_order.cpp'),
     os.path.join('Common','common_stats.cpp'),
     os.path.join('Common','common_types.cpp'),
+    os.path.join('Common','setup_types.cpp'),
     os.path.join('Common','diversity.cpp'),
     os.path.join('Common','fhss.cpp'),
     os.path.join('Common','link_types.cpp'),

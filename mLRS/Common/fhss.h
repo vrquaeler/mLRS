@@ -572,16 +572,7 @@ class tFhssBase
     // Rx: for bind
     SETUP_FREQUENCY_BAND_ENUM GetCurrBindSetupFrequencyBand(void)
     {
-        switch (curr_bind_config_i) {
-        case SX_FHSS_CONFIG_FREQUENCY_BAND_2P4_GHZ: return SETUP_FREQUENCY_BAND_2P4_GHZ;
-        case SX_FHSS_CONFIG_FREQUENCY_BAND_915_MHZ_FCC: return SETUP_FREQUENCY_BAND_915_MHZ_FCC;
-        case SX_FHSS_CONFIG_FREQUENCY_BAND_868_MHZ: return SETUP_FREQUENCY_BAND_868_MHZ;
-        case SX_FHSS_CONFIG_FREQUENCY_BAND_866_MHZ_IN: return SETUP_FREQUENCY_BAND_866_MHZ_IN;
-        case SX_FHSS_CONFIG_FREQUENCY_BAND_433_MHZ: return SETUP_FREQUENCY_BAND_433_MHZ;
-        case SX_FHSS_CONFIG_FREQUENCY_BAND_70_CM_HAM: return SETUP_FREQUENCY_BAND_70_CM_HAM;
-        }
-        while(1){} // should not happen, but play it safe
-        return (SETUP_FREQUENCY_BAND_ENUM)0;
+        return cvt_to_setup_frequency_band(curr_bind_config_i); // asserts if not a valid SX_FHSS_CONFIG_FREQUENCY_BAND_ENUM
     }
 
     // Rx: for RADIO_LINK_STATS_MLRS
@@ -594,7 +585,7 @@ class tFhssBase
 #elif defined DEVICE_HAS_LR11xx
         return 1.0E3f * LR11XX_REG_TO_FREQ_KHZ(GetCurrFreq());
 #else // DEVICE_HAS_SX128x
-        return 1.0E6f * SX1280_REG_TO_FREQ_MHZ(GetCurrFreq());
+        return 1.0E6f * SX128X_REG_TO_FREQ_MHZ(GetCurrFreq());
 #endif
     }
 
@@ -630,7 +621,7 @@ class tFhssBase
         return (uint32_t)LR11XX_REG_TO_FREQ_KHZ(fhss_list[i]);
 #else // DEVICE_HAS_SX128x
         strcpy(unit_str, " MHz");
-        return (uint32_t)SX1280_REG_TO_FREQ_MHZ(fhss_list[i]);
+        return (uint32_t)SX128X_REG_TO_FREQ_MHZ(fhss_list[i]);
 #endif
     }
 
@@ -746,7 +737,7 @@ class tFhss
 #if defined DEVICE_HAS_DUAL_SX126x_SX126x
         return 1.0E3f * SX126X_REG_TO_FREQ_KHZ(GetCurrFreq2());
 #elif defined DEVICE_HAS_DUAL_SX126x_SX128x
-        return 1.0E6f * SX1280_REG_TO_FREQ_MHZ(GetCurrFreq2());
+        return 1.0E6f * SX128X_REG_TO_FREQ_MHZ(GetCurrFreq2());
 #else
         #error Something wrong with dual band config !
 #endif
