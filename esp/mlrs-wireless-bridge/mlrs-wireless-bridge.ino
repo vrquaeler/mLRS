@@ -7,11 +7,11 @@
 // Basic but effective & reliable transparent WiFi or Bluetooth <-> serial bridge.
 // Minimizes wireless traffic while respecting latency by better packeting algorithm.
 //*******************************************************
-// 13. Nov. 2025
+// 10. Dez. 2025
 //*********************************************************/
 // inspired by examples from Arduino
 // NOTES:
-// - For ESP32: Partition Scheme needs to be changed to "No OTA (Large App)" !!
+// - For ESP32 and ESP32C3: Partition Scheme needs to be changed to "No OTA (Large APP)" or "No OTA (2MB APP/2MB SPIFFS)" or similar!!
 // - Use upload speed 115200 if serial passthrough shall be used for flashing (else 921600 is fine)
 // - ArduinoIDE 2.3.2, esp32 by Espressif Systems 3.0.4
 // - For ESP32C3: ESP32 arduino core must be 2.0.17 !!
@@ -52,7 +52,7 @@ List of supported modules, and board which needs to be selected
 - M5Stack ATOM Lite                 board: M5Stack-ATOM
 
 Troubleshooting:
-- If you get error "text section exceeds available space": Set Partition Scheme to "No OTA (Large APP)"
+- If you get error "text section exceeds available space": Set Partition Scheme to "No OTA (Large APP)" or "No OTA (2MB APP/2MB SPIFFS)" or similar
 - If flashing is via serial passthrough, you may have to use upload speed 115200
 */
 
@@ -82,7 +82,7 @@ Troubleshooting:
 //#define MODULE_M5STAMP_C3U_MATE_FOR_FRSKY_R9M // uses inverted serial
 //#define MODULE_M5STAMP_PICO                   // board: ESP32 PICO-D4
 //#define MODULE_M5STAMP_PICO_FOR_FRSKY_R9M // uses inverted serial
-//#define MODULE_M5STACK_ATOM_LITE              // board: M5Stack-ATOM
+//#define MODULE_M5STACK_ATOM_LITE              // board: M5Stack-ATOM ??
 //#define MODULE_GENERIC
 //#define MODULE_DIY_E28DUAL_MODULE02_G491RE    // board: ESP32 PICO-D4, upload speed: 115200
 
@@ -92,15 +92,15 @@ Troubleshooting:
 //#define USE_SERIAL_INVERTED
 
 // Wireless protocol
-// 0 = WiFi TCP, 1 = WiFi UDP, 2 = Wifi UDPSTA, 3 = Bluetooth (not available for all boards), 4 = Wifi UDPCl
+// 0 = WiFi TCP, 1 = WiFi UDP, 2 = Wifi UDPSTA, 3 = Bluetooth (not available for all boards), 4 = Wifi UDPCl, 5 = BLE (not available for all boards)
 // Note: If GPIO0_IO is defined, then this only sets the default protocol
 #define WIRELESS_PROTOCOL  1
 
 // GPIO0 usage
 // uncomment if your Tx module supports the RESET and GPIO0 lines on the ESP32/ESP82xx (aka AT mode)
 // the number determines the IO pin, usally it is 0
-//#define GPIO0_IO  0 for ESP32, ESP82XX
-//#define GPIO0_IO  9 for ESP32C3
+//#define GPIO0_IO  0 // for ESP32, ESP82XX
+//#define GPIO0_IO  9 // for ESP32C3
 
 
 //**********************//
@@ -157,6 +157,13 @@ int port_udpcl = 14550; // listens to this port per UDPCl (only for UDPCl) // Mi
 String bluetooth_device_name = ""; // name of your Bluetooth device as it will be seen by your operating system
 
 
+//**************************//
+//*** BLE settings ***//
+
+// ble_device_name = "" results in a default name, like "mLRS-13427 BLE"
+String ble_device_name = ""; // name of your BLE device as it will be seen by your operating system
+
+
 //************************//
 //*** General settings ***//
 
@@ -203,10 +210,14 @@ String bluetooth_device_name = ""; // name of your Bluetooth device as it will b
 #endif
 #else
 #if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 0, 0)
-    #error "Version of your ESP Arduino Core below 3.0.0 !
+    #error Version of your ESP Arduino Core below 3.0.0 !
 #elif ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 0, 4)
     #warning Consider upgrading your ESP Arduino Core !
 #endif
+#endif // ARDUINO_ESP32C3_DEV
+#if defined USE_AT_MODE && (defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32C3) && \
+    !defined ARDUINO_PARTITION_no_ota
+    #error Partition Scheme must be "No OTA (Large APP)", "No OTA (2MB APP/2MB SPIFFS)" or similar!
 #endif
 
 #include <WiFi.h>
@@ -219,6 +230,15 @@ String bluetooth_device_name = ""; // name of your Bluetooth device as it will b
 #ifdef CONFIG_IDF_TARGET_ESP32 // classic BT only available on ESP32
   #define USE_WIRELESS_PROTOCOL_BLUETOOTH
   #include <BluetoothSerial.h>
+#endif
+#endif
+#if defined USE_AT_MODE || (WIRELESS_PROTOCOL == 5) // for AT commands we require BLE be available
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32C3 // BLE available on ESP32 and ESP32C3
+  #define USE_WIRELESS_PROTOCOL_BLE
+  #include <BLEDevice.h>
+  #include <BLEServer.h>
+  #include <BLEUtils.h>
+  #include <BLE2902.h>
 #endif
 #endif
 #endif // #ifndef ESP8266
@@ -245,6 +265,52 @@ WiFiClient client;
 #ifdef USE_WIRELESS_PROTOCOL_BLUETOOTH
 BluetoothSerial SerialBT;
 #endif
+// BLE
+#ifdef USE_WIRELESS_PROTOCOL_BLE
+#define BLE_SERVICE_UUID            "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // Nordic UART service UUID
+#define BLE_CHARACTERISTIC_UUID_RX  "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define BLE_CHARACTERISTIC_UUID_TX  "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+BLEServer* ble_server = NULL;
+BLECharacteristic* ble_tx_characteristic;
+bool ble_device_connected;
+bool ble_serial_started;
+uint16_t ble_negotiated_mtu;
+unsigned long ble_adv_tlast_ms;
+extern bool is_connected; // forward declarations, needed for BLE callbacks
+extern unsigned long is_connected_tlast_ms; // forward declarations, needed for BLE callbacks
+
+class BLEServerCallbacksHandler : public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+        ble_device_connected = true;
+        ble_negotiated_mtu = pServer->getPeerMTU(pServer->getConnId());
+        DBG_PRINTLN("BLE connected");
+    }
+    void onDisconnect(BLEServer* pServer) {
+        ble_device_connected = false;
+        ble_serial_started = false;
+        DBG_PRINTLN("BLE disconnected");
+    }
+};
+
+class BLECharacteristicCallbacksHandler : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pCharacteristic) {
+        if (!ble_serial_started) {
+            ble_serial_started = true;
+        }
+#if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+        std::string rxValue = pCharacteristic->getValue(); // Core 2.x
+#else
+        String rxValue = pCharacteristic->getValue(); // Core 3.x
+#endif
+        uint32_t len = rxValue.length();
+        if (len > 0) {
+            SERIAL.write((uint8_t*)rxValue.c_str(), len);
+            is_connected = true;
+            is_connected_tlast_ms = millis();
+        }
+    }
+};
+#endif // USE_WIRELESS_PROTOCOL_BLE
 
 typedef enum {
     WIRELESS_PROTOCOL_TCP = 0,
@@ -252,6 +318,7 @@ typedef enum {
     WIRELESS_PROTOCOL_UDPSTA = 2,
     WIRELESS_PROTOCOL_BT = 3,
     WIRELESS_PROTOCOL_UDPCl = 4,
+    WIRELESS_PROTOCOL_BLE = 5,
 } WIRELESS_PROTOCOL_ENUM;
 
 typedef enum {
@@ -333,6 +400,8 @@ void setup_device_name_and_password(void)
         device_password = network_password;
     } else if (g_protocol == WIRELESS_PROTOCOL_BT) {
         device_name = (bluetooth_device_name == "") ? device_name + String(device_id) + " BT" : bluetooth_device_name;
+    } else if (g_protocol == WIRELESS_PROTOCOL_BLE) {
+        device_name = (ble_device_name == "") ? device_name + String(device_id) + " BLE" : ble_device_name;
     }
 }
 
@@ -400,6 +469,51 @@ if (g_protocol == WIRELESS_PROTOCOL_BT) {
 
 #endif
 } else
+if (g_protocol == WIRELESS_PROTOCOL_BLE) {
+//-- BLE
+#ifdef USE_WIRELESS_PROTOCOL_BLE
+
+    ble_device_connected = false;
+    ble_serial_started = false;
+    ble_negotiated_mtu = 23;
+    ble_adv_tlast_ms = 0;
+
+    // Create BLE Device, set MTU
+    BLEDevice::init(device_name.c_str());
+    BLEDevice::setMTU(512);
+
+    // Set BLE Power
+    BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_DEFAULT);
+
+    // Create BLE server, add callbacks
+    ble_server = BLEDevice::createServer();
+    ble_server->setCallbacks(new BLEServerCallbacksHandler());
+
+    // Create BLE service
+    BLEService* ble_service = ble_server->createService(BLE_SERVICE_UUID);
+
+    // Create BLE characteristics, add callback
+    ble_tx_characteristic = ble_service->createCharacteristic(BLE_CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
+    ble_tx_characteristic->addDescriptor(new BLE2902());
+    BLECharacteristic* ble_rx_characteristic = ble_service->createCharacteristic(BLE_CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+    ble_rx_characteristic->setCallbacks(new BLECharacteristicCallbacksHandler());
+
+    // Start service
+    ble_service->start();
+
+    // Configure advertising
+    BLEAdvertising* advertising = BLEDevice::getAdvertising();
+    advertising->addServiceUUID(BLE_SERVICE_UUID);
+    advertising->setScanResponse(true);
+    advertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
+    advertising->setMinPreferred(0x12);
+
+    // Start advertising
+    advertising->start();
+    DBG_PRINTLN("BLE advertising started");
+
+#endif
+} else
 if (g_protocol == WIRELESS_PROTOCOL_UDPSTA) {
 //-- Wifi UDPSTA
 
@@ -464,7 +578,7 @@ void setup()
 
     g_protocol = preferences.getInt(G_PROTOCOL_STR, 255); // 255 indicates not available
     if (g_protocol != WIRELESS_PROTOCOL_TCP && g_protocol != WIRELESS_PROTOCOL_UDP && g_protocol != WIRELESS_PROTOCOL_UDPSTA &&
-        g_protocol != WIRELESS_PROTOCOL_UDPCl && g_protocol != WIRELESS_PROTOCOL_BT) { // not a valid value
+        g_protocol != WIRELESS_PROTOCOL_UDPCl && g_protocol != WIRELESS_PROTOCOL_BT && g_protocol != WIRELESS_PROTOCOL_BLE) { // not a valid value
         g_protocol = PROTOCOL_DEFAULT;
         preferences.putInt(G_PROTOCOL_STR, g_protocol);
     }
@@ -666,6 +780,40 @@ if (g_protocol == WIRELESS_PROTOCOL_BT) {
     }
 
 #endif // USE_WIRELESS_PROTOCOL_BLUETOOTH
+} else
+if (g_protocol == WIRELESS_PROTOCOL_BLE) {
+//-- BLE
+#ifdef USE_WIRELESS_PROTOCOL_BLE
+
+    if (ble_device_connected) {
+        // check serial for data to send over BLE
+        tnow_ms = millis();
+        int avail = SERIAL.available();
+        if (avail <= 0) {
+            serial_data_received_tfirst_ms = tnow_ms;
+        } else
+        if ((tnow_ms - serial_data_received_tfirst_ms) > 10 || avail > 128) {
+            serial_data_received_tfirst_ms = tnow_ms;
+
+            // calculate the number of bytes to read, limit to MTU - 3
+            uint16_t bytesToRead = min((uint16_t)avail, (uint16_t)(ble_negotiated_mtu - 3));
+            if (bytesToRead > sizeof(buf)) bytesToRead = sizeof(buf);
+
+            int len = SERIAL.read(buf, bytesToRead);
+            ble_tx_characteristic->setValue(buf, len);
+            ble_tx_characteristic->notify();
+        }
+    } else {
+        // not connected, restart advertising every 5 sec if needed
+        serialFlushRx();
+        is_connected = false;
+        if (tnow_ms - ble_adv_tlast_ms > 5000) {
+            ble_adv_tlast_ms = tnow_ms;
+            ble_server->startAdvertising();
+        }
+    }
+
+#endif // USE_WIRELESS_PROTOCOL_BLE
 } else
 if (g_protocol == WIRELESS_PROTOCOL_UDPCl) {
 //-- WiFi UDPCl (STA mode)
