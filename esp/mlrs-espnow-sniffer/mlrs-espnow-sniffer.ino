@@ -23,11 +23,16 @@
 
 #define BAUD_RATE           115200 // baudrate for serial output
 
-//#define USE_SERIAL1                // uncomment to use Serial1 instead of USB Serial for ESP32C3 and ESP32S3
-//#define TX_PIN              43     // Serial1 TX pin
-//#define RX_PIN              44     // Serial1 RX pin
+#define USE_SERIAL1                 // uncomment to use Serial1 instead of USB Serial for ESP32C3 and ESP32S3
+#define TX_PIN              21      // Serial1 TX pin
+#define RX_PIN              20      // Serial1 RX pin
 //#define LED_IO              8      // LED pin (comment out to disable)
 //#define LED_ACTIVE_LOW             // uncomment if LED is active low (on = LOW)
+#define WS2812_IO            2       // WS2812 data pin (comment out to disable, mutually exclusive with LED_IO)
+
+#ifdef WS2812_IO
+#include <Adafruit_NeoPixel.h>
+#endif
 
 // optional: hardcode the bridge MAC to skip auto-detection.
 // fill in the 6 bytes of the wireless bridge's MAC address, e.g.:
@@ -52,21 +57,36 @@
 // LED helpers
 //-------------------------------------------------------
 
-#ifdef LED_IO
-#ifdef LED_ACTIVE_LOW
-#define LED_STATE_ON  LOW
-#define LED_STATE_OFF HIGH
-#else
-#define LED_STATE_ON  HIGH
-#define LED_STATE_OFF LOW
+#if defined(LED_IO) && defined(WS2812_IO)
+  #error Define only one of LED_IO or WS2812_IO, not both.
 #endif
-void led_init(void) { pinMode(LED_IO, OUTPUT); digitalWrite(LED_IO, LED_STATE_OFF); }
-void led_on(void) { digitalWrite(LED_IO, LED_STATE_ON); }
-void led_off(void) { digitalWrite(LED_IO, LED_STATE_OFF); }
+
+#ifdef WS2812_IO
+  Adafruit_NeoPixel neopixel(1, WS2812_IO, NEO_GRB + NEO_KHZ800);
+  #define LED_COLOR_GREEN  neopixel.Color(0, 255, 0)
+  #define LED_COLOR_RED    neopixel.Color(255, 0, 0)
+  #define LED_COLOR_BLUE   neopixel.Color(0, 0, 255)
+  void led_init(void) { neopixel.begin(); neopixel.setBrightness(25); neopixel.show(); }
+  void led_on(uint32_t color) { neopixel.setPixelColor(0, color); neopixel.show(); }
+  void led_off(void) { neopixel.setPixelColor(0, 0); neopixel.show(); }
+#elif defined(LED_IO)
+  #define LED_COLOR_GREEN  0
+  #define LED_COLOR_RED    0
+  #define LED_COLOR_BLUE   0
+  #ifdef LED_ACTIVE_LOW
+    #define LED_STATE_ON  LOW
+    #define LED_STATE_OFF HIGH
+  #else
+    #define LED_STATE_ON  HIGH
+    #define LED_STATE_OFF LOW
+  #endif
+  void led_init(void) { pinMode(LED_IO, OUTPUT); digitalWrite(LED_IO, LED_STATE_OFF); }
+  void led_on(void) { digitalWrite(LED_IO, LED_STATE_ON); }
+  void led_off(void) { digitalWrite(LED_IO, LED_STATE_OFF); }
 #else
-void led_init(void) {}
-void led_on(void) {}
-void led_off(void) {}
+  void led_init(void) {}
+  void led_on(void) {}
+  void led_off(void) {}
 #endif
 
 
@@ -306,7 +326,11 @@ void scan_for_espnow(void)
                 if (millis() - led_tlast_ms > 100) {
                     led_tlast_ms = millis();
                     led_state = !led_state;
+#ifdef WS2812_IO
+                    if (led_state) led_on(LED_COLOR_BLUE); else led_off();
+#else
                     if (led_state) led_on(); else led_off();
+#endif
                 }
 
                 if (espnow_frame_received) {
@@ -429,11 +453,19 @@ void loop()
 
     // LED: solid when receiving, blink when idle
     if (is_receiving) {
+#ifdef WS2812_IO
+        led_on(LED_COLOR_GREEN);
+#else
         led_on();
+#endif
     } else if (tnow_ms - led_tlast_ms > 500) {
         led_tlast_ms = tnow_ms;
         led_state = !led_state;
+#ifdef WS2812_IO
+        if (led_state) led_on(LED_COLOR_RED); else led_off();
+#else
         if (led_state) led_on(); else led_off();
+#endif
     }
 
     // drain ring buffer to serial
