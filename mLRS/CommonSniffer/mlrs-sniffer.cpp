@@ -321,6 +321,9 @@ tSnifferDecoder decoder_tx; // Tx→Rx direction payloads → UART (P19)
 tSnifferDecoder decoder_rx; // Rx→Tx direction payloads → serial (P21/P20)
 
 
+uint8_t tx_seq_no_last;    // last seen Tx frame seq_no (3-bit, for ARQ dedup)
+uint8_t rx_seq_no_last;    // last seen Rx frame seq_no (3-bit, for ARQ dedup)
+
 //-------------------------------------------------------
 // frame processing
 //-------------------------------------------------------
@@ -338,7 +341,11 @@ uint8_t do_receive(bool* got_tx)
     if (res == CHECK_OK) {
         rxclock.Reset(); // sync timeout to Tx arrival
         *got_tx = true;
-        decoder_tx.PutBuf(txf->payload, txf->status.payload_len);
+        // only feed payload if seq_no changed (skip ARQ retransmissions)
+        if (txf->status.seq_no != tx_seq_no_last) {
+            tx_seq_no_last = txf->status.seq_no;
+            decoder_tx.PutBuf(txf->payload, txf->status.payload_len);
+        }
         return RX_STATUS_VALID;
     }
     if (res == CHECK_ERROR_CRC) {
@@ -351,7 +358,11 @@ uint8_t do_receive(bool* got_tx)
     tRxFrame* rxf = (tRxFrame*)sniffer_buf;
     res = check_rxframe(rxf);
     if (res == CHECK_OK) {
-        decoder_rx.PutBuf(rxf->payload, rxf->status.payload_len);
+        // only feed payload if seq_no changed (skip ARQ retransmissions)
+        if (rxf->status.seq_no != rx_seq_no_last) {
+            rx_seq_no_last = rxf->status.seq_no;
+            decoder_rx.PutBuf(rxf->payload, rxf->status.payload_len);
+        }
         return RX_STATUS_VALID;
     }
 
@@ -460,6 +471,8 @@ RESTARTCONTROLLER
     link_rx1_status = RX_STATUS_NONE;
     got_tx_frame = false;
     tx_frame_tick = 0;
+    tx_seq_no_last = 0xFF; // invalid — ensures first frame always passes dedup
+    rx_seq_no_last = 0xFF;
 
     tx_frames_cnt = 0;
     rx_frames_cnt = 0;
