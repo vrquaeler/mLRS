@@ -104,6 +104,12 @@
 
 #include "../Common/sx-drivers/sx12xx.h"
 #include "../Common/mavlink/fmav.h"
+#include "../Common/mavlink/fmav_extension.h"
+#ifdef USE_FEATURE_MAVLINKX
+#include "../Common/thirdparty/mavlinkx.h"
+#include "../Common/protocols/msp_protocol.h"
+#include "../Common/thirdparty/mspx.h"
+#endif
 #include "../Common/setup.h"
 #include "../Common/common.h"
 
@@ -194,22 +200,105 @@ uint8_t sniffer_buf[FRAME_TX_RX_LEN];
 
 
 //-------------------------------------------------------
-// sniffer UART output
+// serial link mode decoder
 //-------------------------------------------------------
+// lightweight decoder that parses OTA payload bytes through
+// the configured serial link mode (mavlinkX, mavlink, mspX,
+// or transparent) and outputs standard protocol frames.
 
-void sniffer_output_tx_payload(const uint8_t* payload, uint8_t len)
-{
-    if (len > 0) {
-        uart_putbuf((uint8_t*)payload, len);
-    }
-}
+#define SNIFFER_BUF_SIZE  300 // larger than max mavlink frame (280)
 
-void sniffer_output_rx_payload(const uint8_t* payload, uint8_t len)
+typedef void (*tSnifferOutputFn)(uint8_t* buf, uint16_t len);
+
+// output wrappers for the two serial ports
+void sniffer_output_uart(uint8_t* buf, uint16_t len) { uart_putbuf(buf, len); }
+void sniffer_output_serial(uint8_t* buf, uint16_t len) { serial.putbuf(buf, len); }
+
+class tSnifferDecoder
 {
-    if (len > 0) {
-        serial.putbuf((uint8_t*)payload, len);
+  public:
+    void Init(tSnifferOutputFn fn)
+    {
+        output_fn = fn;
+        fmav_init();
+        mav_status = {};
+#ifdef USE_FEATURE_MAVLINKX
+        fmavX_init();
+        fmavX_config_compression((Config.Mode == MODE_19HZ || Config.Mode == MODE_19HZ_7X) ? 1 : 0);
+        msp_status = {};
+#endif
     }
-}
+
+    void Reset(void)
+    {
+        fmav_parse_reset(&mav_status);
+#ifdef USE_FEATURE_MAVLINKX
+        msp_parse_reset(&msp_status);
+#endif
+    }
+
+    // decode payload and output via the configured output function
+    void PutBuf(uint8_t* const buf, uint8_t len)
+    {
+        if (!len) return;
+
+        if (SERIAL_LINK_MODE_IS_MAVLINK(Setup.Rx.SerialLinkMode)) {
+            for (uint8_t i = 0; i < len; i++) decode_mavlink(buf[i]);
+            return;
+        }
+#ifdef USE_FEATURE_MAVLINKX
+        if (SERIAL_LINK_MODE_IS_MSP(Setup.Rx.SerialLinkMode)) {
+            for (uint8_t i = 0; i < len; i++) decode_msp(buf[i]);
+            return;
+        }
+#endif
+        // transparent mode — raw passthrough
+        output_fn(buf, len);
+    }
+
+  private:
+    tSnifferOutputFn output_fn;
+    fmav_status_t mav_status;
+    uint8_t mav_buf[SNIFFER_BUF_SIZE];
+    fmav_message_t mav_msg;
+#ifdef USE_FEATURE_MAVLINKX
+    msp_status_t msp_status;
+    msp_message_t msp_msg;
+#endif
+    uint8_t _buf[SNIFFER_BUF_SIZE];
+
+    void decode_mavlink(char c)
+    {
+        fmav_result_t result;
+#ifdef USE_FEATURE_MAVLINKX
+        if (Setup.Rx.SerialLinkMode == SERIAL_LINK_MODE_MAVLINK_X) {
+            fmavX_parse_and_checkX_to_frame_buf(&result, mav_buf, &mav_status, c);
+        } else {
+            fmav_parse_and_check_to_frame_buf(&result, mav_buf, &mav_status, c);
+        }
+#else
+        fmav_parse_and_check_to_frame_buf(&result, mav_buf, &mav_status, c);
+#endif
+        if (result.res == FASTMAVLINK_PARSE_RESULT_OK) {
+            fmav_frame_buf_to_msg(&mav_msg, &result, mav_buf);
+            uint16_t frame_len = fmav_msg_to_frame_buf(_buf, &mav_msg);
+            output_fn(_buf, frame_len);
+        }
+    }
+
+#ifdef USE_FEATURE_MAVLINKX
+    void decode_msp(char c)
+    {
+        if (msp_parseX_to_msg(&msp_msg, &msp_status, c)) {
+            uint16_t frame_len = msp_msg_to_frame_buf(_buf, &msp_msg);
+            output_fn(_buf, frame_len);
+        }
+    }
+#endif
+};
+
+tSnifferDecoder decoder_tx; // Tx→Rx direction payloads → UART (P19)
+tSnifferDecoder decoder_rx; // Rx→Tx direction payloads → serial (P21/P20)
 
 
 //-------------------------------------------------------
@@ -217,7 +306,7 @@ void sniffer_output_rx_payload(const uint8_t* payload, uint8_t len)
 //-------------------------------------------------------
 
 // returns RX_STATUS and sets *got_tx true if it decoded as a Tx frame
-uint8_t do_receive(bool do_clock_reset, bool* got_tx)
+uint8_t do_receive(bool* got_tx)
 {
     sx.ReadBuffer(0, sniffer_buf, FRAME_TX_RX_LEN);
 
@@ -227,23 +316,22 @@ uint8_t do_receive(bool do_clock_reset, bool* got_tx)
     tTxFrame* txf = (tTxFrame*)sniffer_buf;
     uint8_t res = check_txframe(txf);
     if (res == CHECK_OK) {
-        if (do_clock_reset) rxclock.Reset();
+        rxclock.Reset(); // sync timeout to Tx arrival
         *got_tx = true;
-        sniffer_output_tx_payload(txf->payload, txf->status.payload_len);
+        decoder_tx.PutBuf(txf->payload, txf->status.payload_len);
         return RX_STATUS_VALID;
     }
     if (res == CHECK_ERROR_CRC) {
-        if (do_clock_reset) rxclock.Reset();
+        rxclock.Reset();
         *got_tx = true;
         return RX_STATUS_CRC1_VALID;
     }
 
     // try as Rx frame (Rx→Tx direction)
-    // don't reset clock on Rx frames — Tx is the timing master
     tRxFrame* rxf = (tRxFrame*)sniffer_buf;
     res = check_rxframe(rxf);
     if (res == CHECK_OK) {
-        sniffer_output_rx_payload(rxf->payload, rxf->status.payload_len);
+        decoder_rx.PutBuf(rxf->payload, rxf->status.payload_len);
         return RX_STATUS_VALID;
     }
 
@@ -266,7 +354,7 @@ uint8_t connect_listen_cnt;
 
 uint8_t link_rx1_status;
 uint8_t frames_this_period; // how many valid frames received this period (0, 1, or 2)
-uint8_t post_receive_cnt;   // how many times doPostReceive has fired this period
+uint32_t first_frame_tick;  // uwTick when first frame of the period was received
 
 uint32_t tx_frames_cnt;
 uint32_t rx_frames_cnt;
@@ -338,6 +426,9 @@ RESTARTCONTROLLER
     fhss.Init(&Config.Fhss, &Config.Fhss2);
     fhss.Start();
 
+    decoder_tx.Init(sniffer_output_uart);
+    decoder_rx.Init(sniffer_output_serial);
+
     sx.SetRfFrequency(fhss.GetCurrFreq());
     sx2.SetRfFrequency(fhss.GetCurrFreq2());
 
@@ -348,13 +439,12 @@ RESTARTCONTROLLER
     connect_listen_cnt = 0;
     link_rx1_status = RX_STATUS_NONE;
     frames_this_period = 0;
-    post_receive_cnt = 0;
+    first_frame_tick = 0;
 
     tx_frames_cnt = 0;
     rx_frames_cnt = 0;
 
-    rxclock.SetPeriod(Config.frame_rate_ms);
-    rxclock.Reset();
+    rxclock.Init(2 * Config.frame_rate_ms);
 
     tick_1hz = 0;
     resetSysTask();
@@ -369,6 +459,15 @@ INITCONTROLLER_END
         }
 
         leds.Tick_ms(connected());
+
+        // software timer: if we got one frame but the other hasn't arrived
+        // after half a frame period, hop now rather than wait for doPostReceive
+        if (link_state == LINK_STATE_RECEIVE_WAIT &&
+            frames_this_period == 1 &&
+            first_frame_tick &&
+            (uwTick - first_frame_tick) >= (Config.frame_rate_ms / 2)) {
+            do_hop();
+        }
 
         DECc(tick_1hz, SYSTICK_DELAY_MS(1000));
 
@@ -400,7 +499,8 @@ INITCONTROLLER_END
         link_state = LINK_STATE_RECEIVE_WAIT;
         link_rx1_status = RX_STATUS_NONE;
         frames_this_period = 0;
-        post_receive_cnt = 0;
+        first_frame_tick = 0;
+        doPostReceive = false; // discard stale timeout from previous cycle
         irq_status = irq2_status = 0;
         break;
     }//end of switch(link_state)
@@ -418,10 +518,8 @@ IF_SX(
             if (irq_status & SX_IRQ_RX_DONE) {
                 irq_status = 0;
 
-                // only reset clock on Tx frames — Tx is the timing master
-                // (do_receive handles this internally: only Tx path calls rxclock.Reset)
                 bool is_tx = false;
-                uint8_t rx_status = do_receive(frames_this_period == 0, &is_tx);
+                uint8_t rx_status = do_receive(&is_tx);
 
                 // track best status for sync purposes
                 if (rx_status > link_rx1_status) {
@@ -429,6 +527,10 @@ IF_SX(
                 }
 
                 if (rx_status == RX_STATUS_VALID) {
+                    if (frames_this_period == 0) {
+                        first_frame_tick = uwTick; // start Rx-missed timeout
+                        if (!first_frame_tick) first_frame_tick = 1; // avoid 0 sentinel
+                    }
                     frames_this_period++;
                     if (is_tx) {
                         tx_frames_cnt++;
@@ -458,34 +560,26 @@ IF_SX(
     }//end of if(irq_status)
 );
 
-    //-- doPostReceive: fallback for missed frames
+    //-- doPostReceive: long-term timeout for completely missed frames
     //
-    // fires once per frame period (~1ms after Tx frame arrival, or periodically in LISTEN).
-    // if we got both frames, do_hop() already ran — nothing to do.
-    // if we got one frame, wait one period for the other, then hop.
-    // if we got zero frames, hop or handle LISTEN as appropriate.
+    // fires at 2× frame_rate_ms after the last Tx frame (via rxclock.Reset in
+    // do_receive), or free-running during LISTEN scanning.
+    //
+    // the "one frame received" case is handled by the software timer above.
+    // this only handles the "zero frames" fallback.
 
     if (doPostReceive) {
         doPostReceive = false;
-        post_receive_cnt++;
 
-        // already hopped via do_hop() in the RX_DONE handler
-        if (frames_this_period >= 2) {
-            return;
-        }
-
-        // got one frame, first doPostReceive: wait for the other
-        if (frames_this_period == 1 && post_receive_cnt <= 1) {
-            return;
-        }
-
-        // got one frame, second doPostReceive: the other was missed, hop
-        if (frames_this_period == 1) {
-            do_hop();
+        // already hopped via do_hop() in the RX_DONE handler or software timer
+        if (frames_this_period >= 1) {
             return;
         }
 
         // got zero frames below this point
+        // reset parser state so partial parses don't carry across gaps
+        decoder_tx.Reset();
+        decoder_rx.Reset();
 
         // LISTEN: hop slowly through frequencies
         if (connect_state == CONNECT_STATE_LISTEN) {
