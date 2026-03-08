@@ -225,6 +225,7 @@ class tSnifferDecoder
 #ifdef USE_FEATURE_MAVLINKX
         fmavX_init();
         fmavX_config_compression((Config.Mode == MODE_19HZ || Config.Mode == MODE_19HZ_7X) ? 1 : 0);
+        saved_fmavx = fmavx_status; // save clean state for this instance
         msp_status = {};
 #endif
     }
@@ -233,6 +234,11 @@ class tSnifferDecoder
     {
         fmav_parse_reset(&mav_status);
 #ifdef USE_FEATURE_MAVLINKX
+        // reset mavlinkX compression state — stale bit-tracking from missed
+        // frames causes the decompressor to produce garbage
+        fmavX_init();
+        fmavX_config_compression((Config.Mode == MODE_19HZ || Config.Mode == MODE_19HZ_7X) ? 1 : 0);
+        saved_fmavx = fmavx_status; // save clean state for this instance
         msp_parse_reset(&msp_status);
 #endif
     }
@@ -242,18 +248,31 @@ class tSnifferDecoder
     {
         if (!len) return;
 
+#ifdef USE_FEATURE_MAVLINKX
+        // swap in this instance's mavlinkX state (fmavx_status is a global
+        // shared by all callers — each decoder needs its own copy)
+        fmavx_status_t tmp = fmavx_status;
+        fmavx_status = saved_fmavx;
+#endif
+
         if (SERIAL_LINK_MODE_IS_MAVLINK(Setup.Rx.SerialLinkMode)) {
             for (uint8_t i = 0; i < len; i++) decode_mavlink(buf[i]);
-            return;
         }
 #ifdef USE_FEATURE_MAVLINKX
-        if (SERIAL_LINK_MODE_IS_MSP(Setup.Rx.SerialLinkMode)) {
+        else if (SERIAL_LINK_MODE_IS_MSP(Setup.Rx.SerialLinkMode)) {
             for (uint8_t i = 0; i < len; i++) decode_msp(buf[i]);
-            return;
         }
 #endif
-        // transparent mode — raw passthrough
-        output_fn(buf, len);
+        else {
+            // transparent mode — raw passthrough
+            output_fn(buf, len);
+        }
+
+#ifdef USE_FEATURE_MAVLINKX
+        // swap out — save this instance's state, restore previous
+        saved_fmavx = fmavx_status;
+        fmavx_status = tmp;
+#endif
     }
 
   private:
@@ -262,6 +281,7 @@ class tSnifferDecoder
     uint8_t mav_buf[SNIFFER_BUF_SIZE];
     fmav_message_t mav_msg;
 #ifdef USE_FEATURE_MAVLINKX
+    fmavx_status_t saved_fmavx; // per-instance mavlinkX state
     msp_status_t msp_status;
     msp_message_t msp_msg;
 #endif
@@ -466,6 +486,8 @@ INITCONTROLLER_END
             frames_this_period == 1 &&
             first_frame_tick &&
             (uwTick - first_frame_tick) >= (Config.frame_rate_ms / 2)) {
+            decoder_tx.Reset();
+            decoder_rx.Reset();
             do_hop();
         }
 
