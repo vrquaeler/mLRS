@@ -1,0 +1,521 @@
+//*******************************************************
+// Copyright (c) MLRS project
+// GPL3
+// https://www.gnu.org/licenses/gpl-3.0.de.html
+//*******************************************************
+// mLRS Listen-Only Sniffer
+// 2026-03-08
+//*******************************************************
+// passive device that monitors OTA frames and outputs
+// serial payloads over UART.
+// never transmits — completely silent on the air.
+//
+// the Tx is the master clock. within each frame period:
+//   1. Tx frame arrives → captured, rxclock.Reset(), re-enter RX
+//   2. Rx response arrives → captured, now hop to next freq
+//   3. if Rx response is missed, doPostReceive acts as fallback
+//
+// Rx-direction payloads (uplink) → serial port (UARTB, pins 21/20)
+// Tx-direction payloads (downlink) → out port (UART, pin 19)
+
+
+#define DBG_MAIN(x)
+#define DBG_MAIN_SLIM(x)
+#define DEBUG_ENABLED
+#define FAIL_ENABLED
+
+
+// irq priorities — same as Rx
+#define CLOCK_IRQ_PRIORITY          10
+#define UARTB_IRQ_PRIORITY          11 // serial
+#define UART_IRQ_PRIORITY           12 // out pin
+#define UARTF_IRQ_PRIORITY          11 // debug
+#define SX_DIO_EXTI_IRQ_PRIORITY    13
+#define SX2_DIO_EXTI_IRQ_PRIORITY   13
+#define SWUART_TIM_IRQ_PRIORITY      9
+#define FDCAN_IRQ_PRIORITY          14
+
+#include "../Common/common_conf.h"
+#include "../Common/common_types.h"
+
+#if defined ESP8266 || defined ESP32
+
+#include "../Common/hal/esp-glue.h"
+#include "../modules/stm32ll-lib/src/stdstm32.h"
+#include "../Common/esp-lib/esp-peripherals.h"
+#include "../Common/esp-lib/esp-mcu.h"
+#include "../Common/esp-lib/esp-stack.h"
+#include "../Common/hal/hal.h"
+#include "../Common/esp-lib/esp-delay.h"
+#include "../Common/esp-lib/esp-eeprom.h"
+#include "../Common/esp-lib/esp-spi.h"
+#ifdef USE_SERIAL
+#include "../Common/esp-lib/esp-uartb.h"
+#endif
+#include "../Common/esp-lib/esp-uart.h" // second UART (out port) for rx-direction payloads
+#ifdef USE_DEBUG
+#ifdef DEVICE_HAS_DEBUG_SWUART
+#include "../Common/esp-lib/esp-uart-sw.h"
+#else
+#include "../Common/esp-lib/esp-uartf.h"
+#endif
+#endif
+#include "../Common/hal/esp-timer.h"
+#include "../Common/hal/esp-powerup.h"
+#include "../Common/hal/esp-rxclock.h"
+
+#else
+
+#include "../Common/hal/glue.h"
+#include "../modules/stm32ll-lib/src/stdstm32.h"
+#include "../modules/stm32ll-lib/src/stdstm32-peripherals.h"
+#include "../modules/stm32ll-lib/src/stdstm32-mcu.h"
+#include "../modules/stm32ll-lib/src/stdstm32-dac.h"
+#include "../modules/stm32ll-lib/src/stdstm32-stack.h"
+#ifdef STM32WL
+#include "../modules/stm32ll-lib/src/stdstm32-subghz.h"
+#endif
+#include "../Common/hal/hal.h"
+#include "../modules/stm32ll-lib/src/stdstm32-delay.h"
+#include "../modules/stm32ll-lib/src/stdstm32-eeprom.h"
+#include "../modules/stm32ll-lib/src/stdstm32-spi.h"
+#ifdef USE_SX2
+#include "../modules/stm32ll-lib/src/stdstm32-spib.h"
+#endif
+#ifdef USE_SERIAL
+#include "../modules/stm32ll-lib/src/stdstm32-uartb.h"
+#endif
+#include "../modules/stm32ll-lib/src/stdstm32-uart.h" // second UART (out port) for rx-direction payloads
+#ifdef USE_DEBUG
+#ifdef DEVICE_HAS_DEBUG_SWUART
+#include "../modules/stm32ll-lib/src/stdstm32-uart-sw.h"
+#else
+#include "../modules/stm32ll-lib/src/stdstm32-uartf.h"
+#endif
+#endif
+#ifdef USE_I2C
+#include "../modules/stm32ll-lib/src/stdstm32-i2c.h"
+#endif
+#include "../Common/hal/timer.h"
+#include "../CommonRx/powerup.h"
+#include "../CommonRx/rxclock.h"
+
+#endif //#if defined ESP8266 || defined ESP32
+
+#include "../Common/sx-drivers/sx12xx.h"
+#include "../Common/mavlink/fmav.h"
+#include "../Common/setup.h"
+#include "../Common/common.h"
+
+
+//-------------------------------------------------------
+// globals
+//-------------------------------------------------------
+
+tRxClock rxclock;
+tPowerupCounter powerup;
+
+// required by bind.h
+void clock_reset(void) { rxclock.Reset(); }
+
+
+//-------------------------------------------------------
+// Init
+//-------------------------------------------------------
+
+void init_hw(void)
+{
+    __disable_irq();
+
+    delay_init();
+    systembootloader_init();
+    timer_init();
+
+    leds_init();
+    button_init();
+
+    serial.Init();
+
+#ifdef DEVICE_HAS_OUT
+    out_init_gpio();
+    out_set_normal();
+#endif
+    uart_init_isroff();
+
+    dbg.Init();
+
+    setup_init();
+
+    sx.Init();
+    sx2.Init();
+
+    __enable_irq();
+}
+
+
+//-------------------------------------------------------
+// SX12xx ISR
+//-------------------------------------------------------
+
+volatile uint16_t irq_status;
+volatile uint16_t irq2_status;
+
+IRQHANDLER(
+void SX_DIO_EXTI_IRQHandler(void)
+{
+    sx_dio_exti_isr_clearflag();
+    irq_status = sx.GetAndClearIrqStatus(SX_IRQ_ALL);
+    if (irq_status & SX_IRQ_RX_DONE) {
+        uint16_t sync_word;
+        sx.ReadBuffer(0, (uint8_t*)&sync_word, 2);
+        if (sync_word != Config.FrameSyncWord) irq_status = 0;
+    }
+})
+#ifdef USE_SX2
+IRQHANDLER(
+void SX2_DIO_EXTI_IRQHandler(void)
+{
+    sx2_dio_exti_isr_clearflag();
+    irq2_status = sx2.GetAndClearIrqStatus(SX2_IRQ_ALL);
+    if (irq2_status & SX2_IRQ_RX_DONE) {
+        uint16_t sync_word;
+        sx2.ReadBuffer(0, (uint8_t*)&sync_word, 2);
+        if (sync_word != Config.FrameSyncWord) irq2_status = 0;
+    }
+})
+#endif
+
+
+//-------------------------------------------------------
+// frame buffer
+//-------------------------------------------------------
+
+uint8_t sniffer_buf[FRAME_TX_RX_LEN];
+
+
+//-------------------------------------------------------
+// sniffer UART output
+//-------------------------------------------------------
+
+void sniffer_output_tx_payload(const uint8_t* payload, uint8_t len)
+{
+    if (len > 0) {
+        uart_putbuf((uint8_t*)payload, len);
+    }
+}
+
+void sniffer_output_rx_payload(const uint8_t* payload, uint8_t len)
+{
+    if (len > 0) {
+        serial.putbuf((uint8_t*)payload, len);
+    }
+}
+
+
+//-------------------------------------------------------
+// frame processing
+//-------------------------------------------------------
+
+// returns RX_STATUS and sets *got_tx true if it decoded as a Tx frame
+uint8_t do_receive(bool do_clock_reset, bool* got_tx)
+{
+    sx.ReadBuffer(0, sniffer_buf, FRAME_TX_RX_LEN);
+
+    *got_tx = false;
+
+    // try as Tx frame (Tx→Rx direction)
+    tTxFrame* txf = (tTxFrame*)sniffer_buf;
+    uint8_t res = check_txframe(txf);
+    if (res == CHECK_OK) {
+        if (do_clock_reset) rxclock.Reset();
+        *got_tx = true;
+        sniffer_output_tx_payload(txf->payload, txf->status.payload_len);
+        return RX_STATUS_VALID;
+    }
+    if (res == CHECK_ERROR_CRC) {
+        if (do_clock_reset) rxclock.Reset();
+        *got_tx = true;
+        return RX_STATUS_CRC1_VALID;
+    }
+
+    // try as Rx frame (Rx→Tx direction)
+    // don't reset clock on Rx frames — Tx is the timing master
+    tRxFrame* rxf = (tRxFrame*)sniffer_buf;
+    res = check_rxframe(rxf);
+    if (res == CHECK_OK) {
+        sniffer_output_rx_payload(rxf->payload, rxf->status.payload_len);
+        return RX_STATUS_VALID;
+    }
+
+    return RX_STATUS_INVALID;
+}
+
+
+//##############################################################################################################
+//*******************************************************
+// MAIN routine
+//*******************************************************
+
+uint16_t tick_1hz;
+
+uint8_t link_state;
+uint8_t connect_state;
+uint16_t connect_tmo_cnt;
+uint8_t connect_sync_cnt;
+uint8_t connect_listen_cnt;
+
+uint8_t link_rx1_status;
+uint8_t frames_this_period; // how many valid frames received this period (0, 1, or 2)
+uint8_t post_receive_cnt;   // how many times doPostReceive has fired this period
+
+uint32_t tx_frames_cnt;
+uint32_t rx_frames_cnt;
+
+
+bool connected(void)
+{
+    return (connect_state == CONNECT_STATE_CONNECTED);
+}
+
+
+//-------------------------------------------------------
+// connection state machine — called once per frame period
+//-------------------------------------------------------
+
+void do_post_receive_state(bool valid_frame_received)
+{
+    if (valid_frame_received) {
+        switch (connect_state) {
+        case CONNECT_STATE_LISTEN:
+            connect_state = CONNECT_STATE_SYNC;
+            connect_sync_cnt = 0;
+            break;
+        case CONNECT_STATE_SYNC:
+            connect_sync_cnt++;
+            if (connect_sync_cnt >= CONNECT_SYNC_CNT) {
+                connect_state = CONNECT_STATE_CONNECTED;
+            }
+            break;
+        }
+        connect_tmo_cnt = CONNECT_TMO_SYSTICKS;
+    }
+}
+
+
+// called when it's time to finish this period and hop to next freq
+void do_hop(void)
+{
+    bool valid = (link_rx1_status > RX_STATUS_INVALID);
+    do_post_receive_state(valid);
+
+    sx.SetToIdle();
+    sx2.SetToIdle();
+    link_state = LINK_STATE_RECEIVE;
+}
+
+
+void main_loop(void)
+{
+INITCONTROLLER_ONCE
+    stack_check_init();
+RESTARTCONTROLLER
+    init_hw();
+    DBG_MAIN(dbg.puts("\n\n\nSniffer\n\n");)
+
+    // setup_init() has run so Config is valid
+    serial.SetBaudRate(Config.SerialBaudrate);
+    uart_setprotocol(Config.SerialBaudrate, XUART_PARITY_NO, UART_STOPBIT_1);
+
+    leds.Init();
+
+    // start up sx
+    if (!sx.isOk()) { FAILALWAYS(BLINK_RD_GR_OFF, "Sx not ok"); }
+    if (!sx2.isOk()) { FAILALWAYS(BLINK_GR_RD_OFF, "Sx2 not ok"); }
+    irq_status = irq2_status = 0;
+    IF_SX(sx.StartUp(&Config.Sx));
+    IF_SX2(sx2.StartUp(&Config.Sx2));
+
+    fhss.Init(&Config.Fhss, &Config.Fhss2);
+    fhss.Start();
+
+    sx.SetRfFrequency(fhss.GetCurrFreq());
+    sx2.SetRfFrequency(fhss.GetCurrFreq2());
+
+    link_state = LINK_STATE_RECEIVE;
+    connect_state = CONNECT_STATE_LISTEN;
+    connect_tmo_cnt = 0;
+    connect_sync_cnt = 0;
+    connect_listen_cnt = 0;
+    link_rx1_status = RX_STATUS_NONE;
+    frames_this_period = 0;
+    post_receive_cnt = 0;
+
+    tx_frames_cnt = 0;
+    rx_frames_cnt = 0;
+
+    rxclock.SetPeriod(Config.frame_rate_ms);
+    rxclock.Reset();
+
+    tick_1hz = 0;
+    resetSysTask();
+INITCONTROLLER_END
+
+    //-- SysTask handling (runs every 1 ms)
+
+    if (doSysTask()) {
+
+        if (connect_tmo_cnt) {
+            connect_tmo_cnt--;
+        }
+
+        leds.Tick_ms(connected());
+
+        DECc(tick_1hz, SYSTICK_DELAY_MS(1000));
+
+        if (!tick_1hz) {
+            dbg.puts("sniff: tx=");
+            dbg.puts(u16toBCD_s(tx_frames_cnt));
+            dbg.puts(" rx=");
+            dbg.puts(u16toBCD_s(rx_frames_cnt));
+            dbg.puts(" ");
+            dbg.puts(connected() ? "CONN" : (connect_state == CONNECT_STATE_SYNC) ? "SYNC" : "LIST");
+            dbg.puts("\n");
+            tx_frames_cnt = 0;
+            rx_frames_cnt = 0;
+        }
+    }
+
+    //-- SX handling: enter RX mode
+
+    switch (link_state) {
+    case LINK_STATE_RECEIVE:
+        // hop only when synced/connected — in LISTEN we hop via connect_listen_cnt
+        if (connect_state >= CONNECT_STATE_SYNC) {
+            fhss.HopToNext();
+        }
+        sx.SetRfFrequency(fhss.GetCurrFreq());
+        sx2.SetRfFrequency(fhss.GetCurrFreq2());
+        IF_ANTENNA1(sx.SetToRx());
+        IF_ANTENNA2(sx2.SetToRx());
+        link_state = LINK_STATE_RECEIVE_WAIT;
+        link_rx1_status = RX_STATUS_NONE;
+        frames_this_period = 0;
+        post_receive_cnt = 0;
+        irq_status = irq2_status = 0;
+        break;
+    }//end of switch(link_state)
+
+    //-- SX handling: process RX_DONE
+    //
+    // within one frame period we can receive up to two frames:
+    //   Tx frame  (Tx→Rx direction)
+    //   Rx frame  (Rx→Tx direction)
+    // order is usually Tx first, but either or both may be missed.
+
+IF_SX(
+    if (irq_status) {
+        if (link_state == LINK_STATE_RECEIVE_WAIT) {
+            if (irq_status & SX_IRQ_RX_DONE) {
+                irq_status = 0;
+
+                // only reset clock on Tx frames — Tx is the timing master
+                // (do_receive handles this internally: only Tx path calls rxclock.Reset)
+                bool is_tx = false;
+                uint8_t rx_status = do_receive(frames_this_period == 0, &is_tx);
+
+                // track best status for sync purposes
+                if (rx_status > link_rx1_status) {
+                    link_rx1_status = rx_status;
+                }
+
+                if (rx_status == RX_STATUS_VALID) {
+                    frames_this_period++;
+                    if (is_tx) {
+                        tx_frames_cnt++;
+                    } else {
+                        rx_frames_cnt++;
+                    }
+                }
+
+                if (frames_this_period >= 2) {
+                    // got both frames — done for this period, hop now
+                    do_hop();
+                } else {
+                    // stay in RX for the next frame
+                    IF_ANTENNA1(sx.SetToRx());
+                    IF_ANTENNA2(sx2.SetToRx());
+                    irq_status = 0;
+                }
+            }
+        }
+
+        if (irq_status) {
+            // unexpected irq — recover
+            irq_status = 0;
+            link_state = LINK_STATE_RECEIVE;
+            link_rx1_status = RX_STATUS_NONE;
+        }
+    }//end of if(irq_status)
+);
+
+    //-- doPostReceive: fallback for missed frames
+    //
+    // fires once per frame period (~1ms after Tx frame arrival, or periodically in LISTEN).
+    // if we got both frames, do_hop() already ran — nothing to do.
+    // if we got one frame, wait one period for the other, then hop.
+    // if we got zero frames, hop or handle LISTEN as appropriate.
+
+    if (doPostReceive) {
+        doPostReceive = false;
+        post_receive_cnt++;
+
+        // already hopped via do_hop() in the RX_DONE handler
+        if (frames_this_period >= 2) {
+            return;
+        }
+
+        // got one frame, first doPostReceive: wait for the other
+        if (frames_this_period == 1 && post_receive_cnt <= 1) {
+            return;
+        }
+
+        // got one frame, second doPostReceive: the other was missed, hop
+        if (frames_this_period == 1) {
+            do_hop();
+            return;
+        }
+
+        // got zero frames below this point
+
+        // LISTEN: hop slowly through frequencies
+        if (connect_state == CONNECT_STATE_LISTEN) {
+            connect_listen_cnt++;
+            if (connect_listen_cnt >= CONNECT_LISTEN_HOP_CNT) {
+                fhss.HopToNext();
+                connect_listen_cnt = 0;
+            }
+            sx.SetToIdle();
+            sx2.SetToIdle();
+            link_state = LINK_STATE_RECEIVE;
+            return;
+        }
+
+        // SYNC/CONNECTED: timeout — drop to listen
+        if ((connect_state >= CONNECT_STATE_SYNC) && !connect_tmo_cnt) {
+            connect_state = CONNECT_STATE_LISTEN;
+            connect_listen_cnt = 0;
+            sx.SetToIdle();
+            sx2.SetToIdle();
+            link_state = LINK_STATE_RECEIVE;
+            return;
+        }
+
+        // SYNC/CONNECTED: missed both frames — hop
+        if (connect_state >= CONNECT_STATE_SYNC) {
+            do_hop();
+        }
+
+        return;
+    }//end of if(doPostReceive)
+
+}//end of main_loop
