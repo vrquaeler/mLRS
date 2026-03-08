@@ -373,8 +373,8 @@ uint8_t connect_sync_cnt;
 uint8_t connect_listen_cnt;
 
 uint8_t link_rx1_status;
-uint8_t frames_this_period; // how many valid frames received this period (0, 1, or 2)
-uint32_t first_frame_tick;  // uwTick when first frame of the period was received
+bool got_tx_frame;         // true when Tx frame received this period, waiting for Rx
+uint32_t tx_frame_tick;    // uwTick when the Tx frame was received
 
 uint32_t tx_frames_cnt;
 uint32_t rx_frames_cnt;
@@ -458,8 +458,8 @@ RESTARTCONTROLLER
     connect_sync_cnt = 0;
     connect_listen_cnt = 0;
     link_rx1_status = RX_STATUS_NONE;
-    frames_this_period = 0;
-    first_frame_tick = 0;
+    got_tx_frame = false;
+    tx_frame_tick = 0;
 
     tx_frames_cnt = 0;
     rx_frames_cnt = 0;
@@ -480,12 +480,11 @@ INITCONTROLLER_END
 
         leds.Tick_ms(connected());
 
-        // software timer: if we got one frame but the other hasn't arrived
-        // after half a frame period, hop now rather than wait for doPostReceive
+        // software timer: got Tx frame but Rx frame hasn't arrived
+        // after half a frame period — Rx was missed, hop now
         if (link_state == LINK_STATE_RECEIVE_WAIT &&
-            frames_this_period == 1 &&
-            first_frame_tick &&
-            (uwTick - first_frame_tick) >= (Config.frame_rate_ms / 2)) {
+            got_tx_frame &&
+            (uwTick - tx_frame_tick) >= (Config.frame_rate_ms / 2)) {
             decoder_tx.Reset();
             decoder_rx.Reset();
             do_hop();
@@ -520,8 +519,8 @@ INITCONTROLLER_END
         IF_ANTENNA2(sx2.SetToRx());
         link_state = LINK_STATE_RECEIVE_WAIT;
         link_rx1_status = RX_STATUS_NONE;
-        frames_this_period = 0;
-        first_frame_tick = 0;
+        got_tx_frame = false;
+        tx_frame_tick = 0;
         doPostReceive = false; // discard stale timeout from previous cycle
         irq_status = irq2_status = 0;
         break;
@@ -529,10 +528,8 @@ INITCONTROLLER_END
 
     //-- SX handling: process RX_DONE
     //
-    // within one frame period we can receive up to two frames:
-    //   Tx frame  (Tx→Rx direction)
-    //   Rx frame  (Rx→Tx direction)
-    // order is usually Tx first, but either or both may be missed.
+    // Tx frame → decode, re-enter RX (wait for Rx frame)
+    // Rx frame → decode, hop immediately (period is over)
 
 IF_SX(
     if (irq_status) {
@@ -548,24 +545,21 @@ IF_SX(
                     link_rx1_status = rx_status;
                 }
 
-                if (rx_status == RX_STATUS_VALID) {
-                    if (frames_this_period == 0) {
-                        first_frame_tick = uwTick; // start Rx-missed timeout
-                        if (!first_frame_tick) first_frame_tick = 1; // avoid 0 sentinel
-                    }
-                    frames_this_period++;
-                    if (is_tx) {
-                        tx_frames_cnt++;
-                    } else {
-                        rx_frames_cnt++;
-                    }
-                }
-
-                if (frames_this_period >= 2) {
-                    // got both frames — done for this period, hop now
+                if (rx_status == RX_STATUS_VALID && is_tx) {
+                    // Tx frame — record it, re-enter RX for the Rx frame
+                    tx_frames_cnt++;
+                    got_tx_frame = true;
+                    tx_frame_tick = uwTick;
+                    if (!tx_frame_tick) tx_frame_tick = 1; // avoid 0 sentinel
+                    IF_ANTENNA1(sx.SetToRx());
+                    IF_ANTENNA2(sx2.SetToRx());
+                    irq_status = 0;
+                } else if (rx_status == RX_STATUS_VALID) {
+                    // Rx frame — period is over, hop now
+                    rx_frames_cnt++;
                     do_hop();
                 } else {
-                    // stay in RX for the next frame
+                    // invalid frame — re-enter RX
                     IF_ANTENNA1(sx.SetToRx());
                     IF_ANTENNA2(sx2.SetToRx());
                     irq_status = 0;
@@ -584,21 +578,19 @@ IF_SX(
 
     //-- doPostReceive: long-term timeout for completely missed frames
     //
-    // fires at 2× frame_rate_ms after the last Tx frame (via rxclock.Reset in
-    // do_receive), or free-running during LISTEN scanning.
-    //
-    // the "one frame received" case is handled by the software timer above.
-    // this only handles the "zero frames" fallback.
+    // fires at 2× frame_rate_ms after the last Tx frame (via rxclock.Reset),
+    // or free-running during LISTEN scanning.
+    // the "got Tx, missed Rx" case is handled by the software timer above.
 
     if (doPostReceive) {
         doPostReceive = false;
 
-        // already hopped via do_hop() in the RX_DONE handler or software timer
-        if (frames_this_period >= 1) {
+        // if we already got a Tx frame this period, this is a stale
+        // rxclock event from a previous period — ignore it
+        if (got_tx_frame) {
             return;
         }
 
-        // got zero frames below this point
         // reset parser state so partial parses don't carry across gaps
         decoder_tx.Reset();
         decoder_rx.Reset();
@@ -626,7 +618,7 @@ IF_SX(
             return;
         }
 
-        // SYNC/CONNECTED: missed both frames — hop
+        // SYNC/CONNECTED: missed Rx frame — hop
         if (connect_state >= CONNECT_STATE_SYNC) {
             do_hop();
         }
